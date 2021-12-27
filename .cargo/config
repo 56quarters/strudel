@@ -1,0 +1,7 @@
+# ARMv7 linked against glibc
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc"
+
+# ARMv7 linked against musl (static binary)
+[target.armv7-unknown-linux-musleabihf]
+linker = "arm-linux-gnueabihf-ld"
