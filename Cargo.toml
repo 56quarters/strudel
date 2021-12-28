@@ -9,6 +9,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "3.0.0-rc.8", features = ["cargo", "derive", "std"], default-features = false }
 futures-util = "0.3.17"
+rppal = "0.13.1"
 hyper = { version = "0.14.16", features = ["full"] }
 tokio = { version = "1.14.0", features = ["full"] }
 serde = { version = "1.0.101", features = ["derive"] }
