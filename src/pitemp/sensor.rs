@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 use tracing::{event, Level};
 
-const DHT_MAX_COUNT: u32 = 128_000;
+const DHT_MAX_COUNT: u32 = 32_000;
 const DHT_PULSES: usize = 41;
 const DATA_SIZE: usize = 5;
 
@@ -23,9 +23,9 @@ impl From<TemperatureFahrenheit> for TemperatureCelsius {
     }
 }
 
-impl Into<f64> for TemperatureCelsius {
-    fn into(self) -> f64 {
-        self.0
+impl From<TemperatureCelsius> for f64 {
+    fn from(v: TemperatureCelsius) -> Self {
+        v.0
     }
 }
 
@@ -48,9 +48,9 @@ impl From<TemperatureCelsius> for TemperatureFahrenheit {
     }
 }
 
-impl Into<f64> for TemperatureFahrenheit {
-    fn into(self) -> f64 {
-        self.0
+impl From<TemperatureFahrenheit> for f64 {
+    fn from(v: TemperatureFahrenheit) -> Self {
+        v.0
     }
 }
 
@@ -67,9 +67,9 @@ impl fmt::Display for TemperatureFahrenheit {
 #[repr(transparent)]
 pub struct Humidity(f64);
 
-impl Into<f64> for Humidity {
-    fn into(self) -> f64 {
-        self.0
+impl From<Humidity> for f64 {
+    fn from(v: Humidity) -> Self {
+        v.0
     }
 }
 
@@ -211,7 +211,7 @@ impl Pulses {
         event!(
             Level::TRACE,
             message = "reading low/high pulse counts",
-            pulses = ?counts,
+            counts = ?counts,
         );
 
         Ok(Self { counts })
@@ -309,8 +309,7 @@ impl Data {
         // > "8 bit integral RH data+8 bit decimal RH data+8 bit integral T data+8 bit
         // > decimal T data".
         let expected = data[4];
-        let computed =
-            ((data[0] as u16 + data[1] as u16 + data[2] as u16 + data[3] as u16) & 0xFF) as u8;
+        let computed = ((data[0] as u16 + data[1] as u16 + data[2] as u16 + data[3] as u16) & 0xFF) as u8;
 
         event!(
             Level::DEBUG,
@@ -366,20 +365,11 @@ impl TemperatureReader {
     ///
     ///
     pub fn new(bcm_gpio_pin: u8) -> Result<Self, SensorError> {
-        let controller = Gpio::new().map_err(|e| {
-            SensorError::from((
-                ErrorKind::Initialization,
-                "unable to create GPIO controller",
-                e,
-            ))
-        })?;
-        let pin = controller.get(bcm_gpio_pin).map_err(|e| {
-            SensorError::from((
-                ErrorKind::Initialization,
-                "unable to acquire pin from controller",
-                e,
-            ))
-        })?;
+        let controller = Gpio::new()
+            .map_err(|e| SensorError::from((ErrorKind::Initialization, "unable to create GPIO controller", e)))?;
+        let pin = controller
+            .get(bcm_gpio_pin)
+            .map_err(|e| SensorError::from((ErrorKind::Initialization, "unable to acquire pin from controller", e)))?;
         let io_pin = pin.into_io(Mode::Input);
 
         Ok(Self { pin: io_pin })
@@ -392,7 +382,7 @@ impl TemperatureReader {
         // TODO(56quarters): Explain this, link to datasheet
         self.pin.set_mode(Mode::Output);
         self.pin.set_high();
-        thread::sleep(Duration::from_millis(1000));
+        thread::sleep(Duration::from_millis(50));
         self.pin.set_low();
         thread::sleep(Duration::from_millis(30));
         self.pin.set_high();
