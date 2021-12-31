@@ -116,6 +116,9 @@ impl MetricsExposition {
     pub async fn encoded_text(&self) -> Result<Vec<u8>, ExpositionError> {
         let registry = self.registry.clone();
 
+        // TODO(56quarters): Explain this, .gather() blocks on reading the sensor so we
+        //  need to run it in a thread pool to avoid tying up tokio and preventing it from
+        //  making progress on other futures
         tokio::task::spawn_blocking(move || {
             let metric_families = registry.gather();
             let mut buffer = Vec::new();

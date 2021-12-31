@@ -89,6 +89,7 @@ pub enum ErrorKind {
     Checksum,
 }
 
+// TODO(56quarters): Do we even need this layer of indirection since this is an app, not a lib?
 #[derive(Debug)]
 enum ErrorRepr {
     CheckSum(u8, u8),
