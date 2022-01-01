@@ -23,6 +23,7 @@ use prometheus::{Counter, CounterVec, Encoder, Gauge, Opts, Registry, TextEncode
 use std::error::Error;
 use std::fmt;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::task;
 use tracing::{event, span, Instrument, Level};
 
@@ -33,6 +34,7 @@ pub struct TemperatureMetrics {
     reader: Mutex<TemperatureReader>,
     temperature: Gauge,
     humidity: Gauge,
+    last_reading: Gauge,
     collections: Counter,
     errors: CounterVec,
 }
@@ -45,6 +47,9 @@ impl TemperatureMetrics {
         let humidity = Gauge::new("pitemp_relative_humidity", "Relative humidity (0-100)")
             .expect("unable to declare humidity gauge");
 
+        let last_reading = Gauge::new("pitemp_last_reading_timestamp", "Timestamp of last successful read")
+            .expect("unable to declare last reading timestamp gauge");
+
         let collections = Counter::new("pitemp_collections_total", "Number of attempted reads")
             .expect("unable to declare collections counter");
 
@@ -55,6 +60,7 @@ impl TemperatureMetrics {
             reader: Mutex::new(reader),
             temperature,
             humidity,
+            last_reading,
             collections,
             errors,
         }
@@ -66,6 +72,7 @@ impl Collector for TemperatureMetrics {
         let mut descs = Vec::new();
         descs.extend(self.temperature.desc());
         descs.extend(self.humidity.desc());
+        descs.extend(self.last_reading.desc());
         descs.extend(self.collections.desc());
         descs.extend(self.errors.desc());
         descs
@@ -80,6 +87,18 @@ impl Collector for TemperatureMetrics {
             Ok((temp, humidity)) => {
                 self.temperature.set(temp.into());
                 self.humidity.set(humidity.into());
+
+                let now = SystemTime::now();
+                match now.duration_since(UNIX_EPOCH) {
+                    Ok(d) => self.last_reading.set(d.as_secs_f64()),
+                    Err(e) => {
+                        event!(
+                            Level::WARN,
+                            message = "unable to compute seconds since UNIX epoch",
+                            error = %e
+                        );
+                    }
+                }
             }
             Err(e) => {
                 self.errors.with_label_values(&[e.kind().as_label()]).inc();
@@ -93,6 +112,7 @@ impl Collector for TemperatureMetrics {
 
         mfs.extend(self.temperature.collect());
         mfs.extend(self.humidity.collect());
+        mfs.extend(self.last_reading.collect());
         mfs.extend(self.collections.collect());
         mfs.extend(self.errors.collect());
         mfs
