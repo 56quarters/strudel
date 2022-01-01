@@ -1,18 +1,19 @@
 use crate::sensor::TemperatureReader;
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::MetricFamily;
-use prometheus::{Counter, Encoder, Gauge, Registry, TextEncoder};
+use prometheus::{Counter, CounterVec, Encoder, Gauge, Opts, Registry, TextEncoder};
 use std::error::Error;
 use std::fmt;
 use std::sync::Mutex;
-use tracing::{event, Level};
+use tokio::task;
+use tracing::{event, span, Instrument, Level};
 
 pub struct TemperatureMetrics {
     reader: Mutex<TemperatureReader>,
     temperature: Gauge,
     humidity: Gauge,
     collections: Counter,
-    errors: Counter,
+    errors: CounterVec,
 }
 
 impl TemperatureMetrics {
@@ -26,8 +27,8 @@ impl TemperatureMetrics {
         let collections = Counter::new("pitemp_collections_total", "Number of attempted reads")
             .expect("unable to declare collections counter");
 
-        let errors =
-            Counter::new("pitemp_errors_total", "Number of failed reads").expect("unable to declare errors counter");
+        let errors = CounterVec::new(Opts::new("pitemp_errors_total", "Number of failed reads"), &["kind"])
+            .expect("unable to declare errors counter");
 
         Self {
             reader: Mutex::new(reader),
@@ -44,6 +45,8 @@ impl Collector for TemperatureMetrics {
         let mut descs = Vec::new();
         descs.extend(self.temperature.desc());
         descs.extend(self.humidity.desc());
+        descs.extend(self.collections.desc());
+        descs.extend(self.errors.desc());
         descs
     }
 
@@ -58,7 +61,7 @@ impl Collector for TemperatureMetrics {
                 self.humidity.set(humidity.into());
             }
             Err(e) => {
-                self.errors.inc();
+                self.errors.with_label_values(&[e.kind().as_label()]).inc();
                 event!(
                     Level::ERROR,
                     message = "unable to read sensor for metric collection",
@@ -69,6 +72,8 @@ impl Collector for TemperatureMetrics {
 
         mfs.extend(self.temperature.collect());
         mfs.extend(self.humidity.collect());
+        mfs.extend(self.collections.collect());
+        mfs.extend(self.errors.collect());
         mfs
     }
 }
@@ -113,22 +118,34 @@ impl MetricsExposition {
         Self { registry }
     }
 
+    ///
+    ///
+    ///
     pub async fn encoded_text(&self) -> Result<Vec<u8>, ExpositionError> {
         let registry = self.registry.clone();
 
-        // TODO(56quarters): Explain this, .gather() blocks on reading the sensor so we
-        //  need to run it in a thread pool to avoid tying up tokio and preventing it from
-        //  making progress on other futures
-        tokio::task::spawn_blocking(move || {
+        // Registry::gather() calls the collect() method of each registered collector. Our
+        // collector blocks while reading the sensor via a GPIO pin. Since this code is called
+        // in response to being scraped for metrics, it runs in the Hyper HTTP request path.
+        // Run it in a thread pool below to avoid blocking the current future while the sensor
+        // is being read (100+ milliseconds).
+        task::spawn_blocking(move || {
             let metric_families = registry.gather();
             let mut buffer = Vec::new();
             let encoder = TextEncoder::new();
+
+            event!(
+                Level::TRACE,
+                message = "encoding metric families to text exposition format",
+                num_metrics = metric_families.len(),
+            );
 
             encoder
                 .encode(&metric_families, &mut buffer)
                 .map_err(|e| ExpositionError::Encoding("unable to encode Prometheus metrics", Box::new(e)))
                 .map(|_| buffer)
         })
+        .instrument(span!(Level::DEBUG, "pitemp_gather"))
         .await
         .map_err(|e| ExpositionError::Runtime("unable to gather Prometheus metrics", Box::new(e)))?
     }

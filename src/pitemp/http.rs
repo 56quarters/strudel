@@ -21,11 +21,19 @@ pub async fn http_route(req: Request<Body>, context: Arc<RequestContext>) -> Res
 
     let res = match (&method, path.as_ref()) {
         (&Method::GET, "/metrics") => match context.exposition.encoded_text().await {
-            Ok(buffer) => Response::builder()
-                .status(StatusCode::OK)
-                .header(CONTENT_TYPE, TEXT_FORMAT)
-                .body(Body::from(buffer))
-                .unwrap(),
+            Ok(buffer) => {
+                event!(
+                    Level::TRACE,
+                    message = "encoded prometheus metrics to text format",
+                    num_bytes = buffer.len(),
+                );
+
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(CONTENT_TYPE, TEXT_FORMAT)
+                    .body(Body::from(buffer))
+                    .unwrap()
+            }
             Err(e) => {
                 event!(
                     Level::ERROR,

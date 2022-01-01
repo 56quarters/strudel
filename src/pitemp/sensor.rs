@@ -89,76 +89,53 @@ pub enum ErrorKind {
     Checksum,
 }
 
-// TODO(56quarters): Do we even need this layer of indirection since this is an app, not a lib?
+impl ErrorKind {
+    pub fn as_label(&self) -> &'static str {
+        match self {
+            ErrorKind::Initialization => "initialization",
+            ErrorKind::ReadTimeout => "timeout",
+            ErrorKind::Checksum => "checksum",
+        }
+    }
+}
+
+///
+///
+///
 #[derive(Debug)]
-enum ErrorRepr {
+pub enum SensorError {
     CheckSum(u8, u8),
     KindMsg(ErrorKind, &'static str),
     KindMsgCause(ErrorKind, &'static str, Box<dyn Error + Send + Sync>),
 }
 
-///
-///
-///
-#[derive(Debug)]
-pub struct SensorError {
-    repr: ErrorRepr,
-}
-
 impl SensorError {
     pub fn kind(&self) -> ErrorKind {
-        match self.repr {
-            ErrorRepr::CheckSum(_, _) => ErrorKind::Checksum,
-            ErrorRepr::KindMsg(kind, _) => kind,
-            ErrorRepr::KindMsgCause(kind, _, _) => kind,
+        match self {
+            SensorError::CheckSum(_, _) => ErrorKind::Checksum,
+            SensorError::KindMsg(kind, _) => *kind,
+            SensorError::KindMsgCause(kind, _, _) => *kind,
         }
     }
 }
 
 impl fmt::Display for SensorError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.repr {
-            ErrorRepr::CheckSum(expected, got) => {
+        match self {
+            SensorError::CheckSum(expected, got) => {
                 write!(f, "checksum error: expected {}, got {}", expected, got)
             }
-            ErrorRepr::KindMsg(_, msg) => msg.fmt(f),
-            ErrorRepr::KindMsgCause(_, msg, ref e) => write!(f, "{}: {}", msg, e),
+            SensorError::KindMsg(_, msg) => msg.fmt(f),
+            SensorError::KindMsgCause(_, msg, ref e) => write!(f, "{}: {}", msg, e),
         }
     }
 }
 
 impl Error for SensorError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self.repr {
-            ErrorRepr::KindMsgCause(_, _, ref e) => Some(e.as_ref()),
+        match self {
+            SensorError::KindMsgCause(_, _, ref e) => Some(e.as_ref()),
             _ => None,
-        }
-    }
-}
-
-impl From<(u8, u8)> for SensorError {
-    fn from((expected, got): (u8, u8)) -> Self {
-        SensorError {
-            repr: ErrorRepr::CheckSum(expected, got),
-        }
-    }
-}
-
-impl From<(ErrorKind, &'static str)> for SensorError {
-    fn from((kind, msg): (ErrorKind, &'static str)) -> Self {
-        SensorError {
-            repr: ErrorRepr::KindMsg(kind, msg),
-        }
-    }
-}
-
-impl<E> From<(ErrorKind, &'static str, E)> for SensorError
-where
-    E: Error + Send + Sync + 'static,
-{
-    fn from((kind, msg, e): (ErrorKind, &'static str, E)) -> Self {
-        SensorError {
-            repr: ErrorRepr::KindMsgCause(kind, msg, Box::new(e)),
         }
     }
 }
@@ -191,20 +168,20 @@ impl Pulses {
             while pin.is_low() {
                 counts[i] += 1;
                 if counts[i] >= DHT_MAX_COUNT as u32 {
-                    return Err(SensorError::from((
+                    return Err(SensorError::KindMsg(
                         ErrorKind::ReadTimeout,
                         "timeout waiting for low pulse capture",
-                    )));
+                    ));
                 }
             }
 
             while pin.is_high() {
                 counts[i + 1] += 1;
                 if counts[i + 1] >= DHT_MAX_COUNT as u32 {
-                    return Err(SensorError::from((
+                    return Err(SensorError::KindMsg(
                         ErrorKind::ReadTimeout,
                         "timeout waiting for high pulse capture",
-                    )));
+                    ));
                 }
             }
         }
@@ -320,7 +297,7 @@ impl Data {
         );
 
         if computed != expected {
-            Err(SensorError::from((expected, computed)))
+            Err(SensorError::CheckSum(expected, computed))
         } else {
             Ok(())
         }
@@ -366,11 +343,20 @@ impl TemperatureReader {
     ///
     ///
     pub fn new(bcm_gpio_pin: u8) -> Result<Self, SensorError> {
-        let controller = Gpio::new()
-            .map_err(|e| SensorError::from((ErrorKind::Initialization, "unable to create GPIO controller", e)))?;
-        let pin = controller
-            .get(bcm_gpio_pin)
-            .map_err(|e| SensorError::from((ErrorKind::Initialization, "unable to acquire pin from controller", e)))?;
+        let controller = Gpio::new().map_err(|e| {
+            SensorError::KindMsgCause(
+                ErrorKind::Initialization,
+                "unable to create GPIO controller",
+                Box::new(e),
+            )
+        })?;
+        let pin = controller.get(bcm_gpio_pin).map_err(|e| {
+            SensorError::KindMsgCause(
+                ErrorKind::Initialization,
+                "unable to acquire pin from controller",
+                Box::new(e),
+            )
+        })?;
         let io_pin = pin.into_io(Mode::Input);
 
         Ok(Self { pin: io_pin })
