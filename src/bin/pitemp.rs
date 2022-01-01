@@ -31,7 +31,7 @@ use tracing::{event, span, Instrument, Level};
 // const PIN_NUM: u8 = 17;
 
 const DEFAULT_LOG_LEVEL: Level = Level::INFO;
-const DEFAULT_BIND_ADDR: ([u8; 4], u16) = ([127, 0, 0, 1], 3000);
+const DEFAULT_BIND_ADDR: ([u8; 4], u16) = ([0, 0, 0, 0], 9781);
 
 /// Expose temperature and humidity from a DHT22 sensor as Prometheus metrics
 ///
