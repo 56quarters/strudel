@@ -1,3 +1,21 @@
+// Pitemp - Temperature and humidity metrics exporter for Prometheus
+//
+// Copyright 2021 Nick Pillitteri
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 use crate::metrics::MetricsExposition;
 use hyper::header::CONTENT_TYPE;
 use hyper::{Body, Method, Request, Response, StatusCode};
@@ -23,7 +41,7 @@ pub async fn http_route(req: Request<Body>, context: Arc<RequestContext>) -> Res
         (&Method::GET, "/metrics") => match context.exposition.encoded_text().await {
             Ok(buffer) => {
                 event!(
-                    Level::TRACE,
+                    Level::DEBUG,
                     message = "encoded prometheus metrics to text format",
                     num_bytes = buffer.len(),
                 );

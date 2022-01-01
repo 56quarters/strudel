@@ -1,3 +1,21 @@
+// Pitemp - Temperature and humidity metrics exporter for Prometheus
+//
+// Copyright 2021 Nick Pillitteri
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 use crate::sensor::TemperatureReader;
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::MetricFamily;
@@ -8,6 +26,9 @@ use std::sync::Mutex;
 use tokio::task;
 use tracing::{event, span, Instrument, Level};
 
+/// Prometheus Collector implementation that reads temperature and humidity from
+/// a DHT22 sensor. Temperature in degrees celsius and relative humidity will be
+/// emitted as gauges.
 pub struct TemperatureMetrics {
     reader: Mutex<TemperatureReader>,
     temperature: Gauge,
@@ -78,9 +99,7 @@ impl Collector for TemperatureMetrics {
     }
 }
 
-///
-///
-///
+/// Error exposing Prometheus metrics in the text exposition format.
 #[derive(Debug)]
 pub enum ExpositionError {
     Runtime(&'static str, Box<dyn Error + Send + Sync + 'static>),
@@ -105,9 +124,10 @@ impl Error for ExpositionError {
     }
 }
 
+/// Wrapper that exposes metrics from a Prometheus registry in the text exposition format.
 ///
-///
-///
+/// This wrapper gathers all metrics from the registry in a separate thread, managed by the
+/// tokio runtime in order to avoid blocking the future it is called from.
 #[derive(Debug)]
 pub struct MetricsExposition {
     registry: Registry,
@@ -118,9 +138,8 @@ impl MetricsExposition {
         Self { registry }
     }
 
-    ///
-    ///
-    ///
+    /// Collect all metrics from the registry and encode them in the Prometheus text exposition
+    /// format, returning an error if metrics couldn't be collected or encoded for some reason.
     pub async fn encoded_text(&self) -> Result<Vec<u8>, ExpositionError> {
         let registry = self.registry.clone();
 
@@ -135,7 +154,7 @@ impl MetricsExposition {
             let encoder = TextEncoder::new();
 
             event!(
-                Level::TRACE,
+                Level::DEBUG,
                 message = "encoding metric families to text exposition format",
                 num_metrics = metric_families.len(),
             );

@@ -1,3 +1,21 @@
+// Pitemp - Temperature and humidity metrics exporter for Prometheus
+//
+// Copyright 2021 Nick Pillitteri
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 use clap::{crate_version, Parser};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
@@ -56,6 +74,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         process::exit(1)
     });
 
+    // Clone here since we're going to pass ownership of this to the MetricsExposition
+    // instance created below. Cloning is relatively cheap since the state of the registry
+    // is contained within an Arc.
     let reg = prometheus::default_registry().clone();
     reg.register(Box::new(TemperatureMetrics::new(reader)))
         .unwrap_or_else(|e| {
