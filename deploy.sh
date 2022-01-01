@@ -6,5 +6,5 @@ set -o nounset
 
 HOST="$1"
 
-cargo build --target armv7-unknown-linux-musleabihf
-scp target/armv7-unknown-linux-musleabihf/debug/pitemp "$HOST":
+cargo build --release --target armv7-unknown-linux-musleabihf
+scp target/armv7-unknown-linux-musleabihf/release/pitemp "$HOST":
