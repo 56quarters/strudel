@@ -1,0 +1,10 @@
+[Unit]
+Description=Temperature and humidity metrics exporter for Prometheus
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/pitemp --bcm-pin 17 --log-level trace
+
+[Install]
+WantedBy=multi-user.target
