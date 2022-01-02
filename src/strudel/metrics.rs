@@ -121,26 +121,32 @@ impl Collector for TemperatureMetrics {
 
 /// Error exposing Prometheus metrics in the text exposition format.
 #[derive(Debug)]
-pub enum ExpositionError {
-    Runtime(&'static str, Box<dyn Error + Send + Sync + 'static>),
-    Encoding(&'static str, Box<dyn Error + Send + Sync + 'static>),
+pub struct ExpositionError {
+    msg: &'static str,
+    cause: Box<dyn Error + Send + Sync + 'static>,
+}
+
+impl ExpositionError {
+    pub fn new<E>(msg: &'static str, cause: E) -> Self
+    where
+        E: Error + Send + Sync + 'static,
+    {
+        ExpositionError {
+            msg,
+            cause: Box::new(cause),
+        }
+    }
 }
 
 impl fmt::Display for ExpositionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ExpositionError::Runtime(msg, ref e) => write!(f, "{}: {}", msg, e),
-            ExpositionError::Encoding(msg, ref e) => write!(f, "{}: {}", msg, e),
-        }
+        write!(f, "{}: {}", self.msg, self.cause)
     }
 }
 
 impl Error for ExpositionError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            ExpositionError::Runtime(_, ref e) => Some(e.as_ref()),
-            ExpositionError::Encoding(_, ref e) => Some(e.as_ref()),
-        }
+        Some(self.cause.as_ref())
     }
 }
 
@@ -181,11 +187,11 @@ impl MetricsExposition {
 
             encoder
                 .encode(&metric_families, &mut buffer)
-                .map_err(|e| ExpositionError::Encoding("unable to encode Prometheus metrics", Box::new(e)))
+                .map_err(|e| ExpositionError::new("unable to encode Prometheus metrics", e))
                 .map(|_| buffer)
         })
         .instrument(span!(Level::DEBUG, "strudel_gather"))
         .await
-        .map_err(|e| ExpositionError::Runtime("unable to gather Prometheus metrics", Box::new(e)))?
+        .map_err(|e| ExpositionError::new("unable to gather Prometheus metrics", e))?
     }
 }

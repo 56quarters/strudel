@@ -23,9 +23,7 @@ use std::net::SocketAddr;
 use std::process;
 use std::sync::Arc;
 use std::time::Instant;
-use strudel::http::{http_route, RequestContext};
-use strudel::metrics::{MetricsExposition, TemperatureMetrics};
-use strudel::sensor::TemperatureReader;
+use strudel::{http_route, MetricsExposition, RequestContext, TemperatureMetrics, TemperatureReader};
 use tracing::{event, span, Instrument, Level};
 
 // const PIN_NUM: u8 = 17;
@@ -35,7 +33,14 @@ const DEFAULT_BIND_ADDR: ([u8; 4], u16) = ([0, 0, 0, 0], 9781);
 
 /// Expose temperature and humidity from a DHT22 sensor as Prometheus metrics
 ///
-/// Blah blah blah, longer description goes here.
+/// Read temperature and humidity data from a DHT22 sensor connected to a data pin
+/// of a local machine, usually a Raspberry PI, and expose them as Prometheus
+/// metrics. Several other metrics are emitted as well to help diagnose failures
+/// reading the sensor.
+///
+/// The sensor must be connected to one of the General Purpose IO pins (GPIO). The
+/// numbering of these pins (and how the pin number is provided to strudel) is based
+/// on the Broadcom SOC channel.
 #[derive(Debug, Parser)]
 #[clap(name = "strudel", version = crate_version!())]
 struct PitempApplication {
@@ -43,11 +48,14 @@ struct PitempApplication {
     #[clap(long)]
     bcm_pin: u8,
 
-    /// Logging verbosity. Allowed values are 'trace', 'debug', 'info', 'warn', and 'error' (case insensitive)
+    /// Logging verbosity. Allowed values are 'trace', 'debug', 'info', 'warn', and 'error'
+    /// (case insensitive)
     #[clap(long, default_value_t = DEFAULT_LOG_LEVEL)]
     log_level: Level,
 
-    /// Address to bind to.
+    /// Address to bind to. By default, strudel will bind to public address since
+    /// the purpose is to expose metrics to an external system (Prometheus or another
+    /// agent for ingestion)
     #[clap(long, default_value_t = DEFAULT_BIND_ADDR.into())]
     bind: SocketAddr,
 }

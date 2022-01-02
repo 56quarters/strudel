@@ -33,12 +33,6 @@ const DATA_SIZE: usize = 5;
 #[repr(transparent)]
 pub struct TemperatureCelsius(f64);
 
-impl From<TemperatureFahrenheit> for TemperatureCelsius {
-    fn from(f: TemperatureFahrenheit) -> Self {
-        TemperatureCelsius((f.0 - 32.0) / 1.8)
-    }
-}
-
 impl From<TemperatureCelsius> for f64 {
     fn from(v: TemperatureCelsius) -> Self {
         v.0
@@ -48,29 +42,6 @@ impl From<TemperatureCelsius> for f64 {
 impl fmt::Display for TemperatureCelsius {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}c", self.0)
-    }
-}
-
-/// Temperature, in degrees fahrenheit
-#[derive(Copy, Clone, Debug)]
-#[repr(transparent)]
-pub struct TemperatureFahrenheit(f64);
-
-impl From<TemperatureCelsius> for TemperatureFahrenheit {
-    fn from(c: TemperatureCelsius) -> Self {
-        TemperatureFahrenheit(c.0 * 1.8 + 32.0)
-    }
-}
-
-impl From<TemperatureFahrenheit> for f64 {
-    fn from(v: TemperatureFahrenheit) -> Self {
-        v.0
-    }
-}
-
-impl fmt::Display for TemperatureFahrenheit {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}f", self.0)
     }
 }
 
@@ -93,18 +64,18 @@ impl fmt::Display for Humidity {
 
 /// Potential kinds of errors that can be encountered reading from the DHT sensor
 #[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
-pub enum ErrorKind {
+pub enum SensorErrorKind {
     Initialization,
     ReadTimeout,
     Checksum,
 }
 
-impl ErrorKind {
+impl SensorErrorKind {
     pub fn as_label(&self) -> &'static str {
         match self {
-            ErrorKind::Initialization => "initialization",
-            ErrorKind::ReadTimeout => "timeout",
-            ErrorKind::Checksum => "checksum",
+            SensorErrorKind::Initialization => "initialization",
+            SensorErrorKind::ReadTimeout => "timeout",
+            SensorErrorKind::Checksum => "checksum",
         }
     }
 }
@@ -113,14 +84,14 @@ impl ErrorKind {
 #[derive(Debug)]
 pub enum SensorError {
     CheckSum(u8, u8),
-    KindMsg(ErrorKind, &'static str),
-    KindMsgCause(ErrorKind, &'static str, Box<dyn Error + Send + Sync>),
+    KindMsg(SensorErrorKind, &'static str),
+    KindMsgCause(SensorErrorKind, &'static str, Box<dyn Error + Send + Sync>),
 }
 
 impl SensorError {
-    pub fn kind(&self) -> ErrorKind {
+    pub fn kind(&self) -> SensorErrorKind {
         match self {
-            SensorError::CheckSum(_, _) => ErrorKind::Checksum,
+            SensorError::CheckSum(_, _) => SensorErrorKind::Checksum,
             SensorError::KindMsg(kind, _) => *kind,
             SensorError::KindMsgCause(kind, _, _) => *kind,
         }
@@ -185,7 +156,7 @@ impl Pulses {
                 counts[i] += 1;
                 if counts[i] >= DHT_MAX_COUNT as u32 {
                     return Err(SensorError::KindMsg(
-                        ErrorKind::ReadTimeout,
+                        SensorErrorKind::ReadTimeout,
                         "timeout waiting for low pulse capture",
                     ));
                 }
@@ -195,7 +166,7 @@ impl Pulses {
                 counts[i + 1] += 1;
                 if counts[i + 1] >= DHT_MAX_COUNT as u32 {
                     return Err(SensorError::KindMsg(
-                        ErrorKind::ReadTimeout,
+                        SensorErrorKind::ReadTimeout,
                         "timeout waiting for high pulse capture",
                     ));
                 }
@@ -354,14 +325,14 @@ impl TemperatureReader {
     pub fn new(bcm_gpio_pin: u8) -> Result<Self, SensorError> {
         let controller = Gpio::new().map_err(|e| {
             SensorError::KindMsgCause(
-                ErrorKind::Initialization,
+                SensorErrorKind::Initialization,
                 "unable to create GPIO controller",
                 Box::new(e),
             )
         })?;
         let pin = controller.get(bcm_gpio_pin).map_err(|e| {
             SensorError::KindMsgCause(
-                ErrorKind::Initialization,
+                SensorErrorKind::Initialization,
                 "unable to acquire pin from controller",
                 Box::new(e),
             )

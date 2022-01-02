@@ -25,21 +25,21 @@ The following metrics are exported:
 . Since it's meant  to be run on a Raspberry PI, you will also likely need to cross-compile it. If you
 are on Ubuntu GNU/Linux, you'll need the following packages installed for this.
 
-```
+```text
 apt-get install gcc-arm-linux-gnueabihf musl-tools
 ```
 
-This will allow you to build for ARMv7 platforms and built completely static binaries (respectively).
+This will allow you to build for ARMv7 platforms and build completely static binaries (respectively).
 
 Next, make sure you have a Rust toolchain for ARMv7, assuming you are using the `rustup` tool.
 
-```
+```text
 rustup target add armv7-unknown-linux-musleabihf
 ```
 
 Next, you'll need to build `strudel` itself for ARMv7.
 
-```
+```text
 cargo build --release --target armv7-unknown-linux-musleabihf
 ```
 
@@ -58,7 +58,7 @@ In order to read and write the device `/dev/gpiomem`, `strudel` must run as `roo
 `strudel` as a Systemd service using the [provided unit file](ext/strudel.service). This unit file
 assumes that you have copied the resulting `strudel` binary to `/usr/local/bin/strudel`.
 
-```
+```text
 sudo cp target/armv7-unknown-linux-musleabihf/release/strudel /usr/local/bin/strudel
 sudo cp ext/strudel.service /etc/systemd/system/strudel.service
 sudo systemctl daemon-reload
