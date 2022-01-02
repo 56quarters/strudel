@@ -23,6 +23,7 @@ use prometheus::TEXT_FORMAT;
 use std::sync::Arc;
 use tracing::{event, Level};
 
+/// Global stated shared between all HTTP requests via Arc.
 pub struct RequestContext {
     exposition: MetricsExposition,
 }
@@ -33,6 +34,11 @@ impl RequestContext {
     }
 }
 
+/// Handle incoming HTTP requests for Prometheus metrics
+///
+/// The attached temperature and humidity sensor will be read (in a separate thread pool) in
+/// response to incoming requests. If the sensor could not be read for any reason, an HTTP
+/// 500 response will be returned.
 pub async fn http_route(req: Request<Body>, context: Arc<RequestContext>) -> Result<Response<Body>, hyper::Error> {
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
