@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/pitemp --bcm-pin 17 --log-level debug
+ExecStart=/usr/local/bin/strudel --bcm-pin 17 --log-level debug
 
 [Install]
 WantedBy=multi-user.target

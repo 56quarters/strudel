@@ -1,4 +1,4 @@
-// Pitemp - Temperature and humidity metrics exporter for Prometheus
+// Strudel - Temperature and humidity metrics exporter for Prometheus
 //
 // Copyright 2021 Nick Pillitteri
 //

@@ -1,4 +1,4 @@
-// Pitemp - Temperature and humidity metrics exporter for Prometheus
+// Strudel - Temperature and humidity metrics exporter for Prometheus
 //
 // Copyright 2021 Nick Pillitteri
 //
@@ -41,19 +41,19 @@ pub struct TemperatureMetrics {
 
 impl TemperatureMetrics {
     pub fn new(reader: TemperatureReader) -> Self {
-        let temperature = Gauge::new("pitemp_temperature_celsius", "Temperature in celsius")
+        let temperature = Gauge::new("strudel_temperature_celsius", "Temperature in celsius")
             .expect("unable to declare temperature gauge");
 
-        let humidity = Gauge::new("pitemp_relative_humidity", "Relative humidity (0-100)")
+        let humidity = Gauge::new("strudel_relative_humidity", "Relative humidity (0-100)")
             .expect("unable to declare humidity gauge");
 
-        let last_reading = Gauge::new("pitemp_last_reading_timestamp", "Timestamp of last successful read")
+        let last_reading = Gauge::new("strudel_last_reading_timestamp", "Timestamp of last successful read")
             .expect("unable to declare last reading timestamp gauge");
 
-        let collections = Counter::new("pitemp_collections_total", "Number of attempted reads")
+        let collections = Counter::new("strudel_collections_total", "Number of attempted reads")
             .expect("unable to declare collections counter");
 
-        let errors = CounterVec::new(Opts::new("pitemp_errors_total", "Number of failed reads"), &["kind"])
+        let errors = CounterVec::new(Opts::new("strudel_errors_total", "Number of failed reads"), &["kind"])
             .expect("unable to declare errors counter");
 
         Self {
@@ -184,7 +184,7 @@ impl MetricsExposition {
                 .map_err(|e| ExpositionError::Encoding("unable to encode Prometheus metrics", Box::new(e)))
                 .map(|_| buffer)
         })
-        .instrument(span!(Level::DEBUG, "pitemp_gather"))
+        .instrument(span!(Level::DEBUG, "strudel_gather"))
         .await
         .map_err(|e| ExpositionError::Runtime("unable to gather Prometheus metrics", Box::new(e)))?
     }

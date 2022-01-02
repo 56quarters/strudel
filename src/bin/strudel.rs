@@ -1,4 +1,4 @@
-// Pitemp - Temperature and humidity metrics exporter for Prometheus
+// Strudel - Temperature and humidity metrics exporter for Prometheus
 //
 // Copyright 2021 Nick Pillitteri
 //
@@ -19,13 +19,13 @@
 use clap::{crate_version, Parser};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
-use pitemp::http::{http_route, RequestContext};
-use pitemp::metrics::{MetricsExposition, TemperatureMetrics};
-use pitemp::sensor::TemperatureReader;
 use std::net::SocketAddr;
 use std::process;
 use std::sync::Arc;
 use std::time::Instant;
+use strudel::http::{http_route, RequestContext};
+use strudel::metrics::{MetricsExposition, TemperatureMetrics};
+use strudel::sensor::TemperatureReader;
 use tracing::{event, span, Instrument, Level};
 
 // const PIN_NUM: u8 = 17;
@@ -37,7 +37,7 @@ const DEFAULT_BIND_ADDR: ([u8; 4], u16) = ([0, 0, 0, 0], 9781);
 ///
 /// Blah blah blah, longer description goes here.
 #[derive(Debug, Parser)]
-#[clap(name = "pitemp", version = crate_version!())]
+#[clap(name = "strudel", version = crate_version!())]
 struct PitempApplication {
     /// BCM GPIO pin number the DHT22 sensor data line is connected to
     #[clap(long)]
@@ -96,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         async move {
             Ok::<_, hyper::Error>(service_fn(move |req| {
-                http_route(req, context.clone()).instrument(span!(Level::DEBUG, "pitemp_request"))
+                http_route(req, context.clone()).instrument(span!(Level::DEBUG, "strudel_request"))
             }))
         }
     });

@@ -1,8 +1,8 @@
 [package]
-name = "pitemp"
+name = "strudel"
 version = "0.1.0"
-homepage = "https://github.com/56quarters/pitemp"
-repository = "https://github.com/56quarters/pitemp"
+homepage = "https://github.com/56quarters/strudel"
+repository = "https://github.com/56quarters/strudel"
 license = "GPL-3.0+"
 edition = "2021"
 
@@ -19,5 +19,5 @@ tracing = "0.1.11"
 tracing-subscriber = "0.1.6"
 
 [lib]
-name = "pitemp"
-path = "src/pitemp/lib.rs"
+name = "strudel"
+path = "src/strudel/lib.rs"

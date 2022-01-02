@@ -1,29 +1,29 @@
-# Pi Temp
+# Strudel
 
-[![build status](https://circleci.com/gh/56quarters/pitemp.svg?style=shield)](https://circleci.com/gh/56quarters/pitemp)
-[![docs.rs](https://docs.rs/pitemp/badge.svg)](https://docs.rs/pitemp/)
-[![crates.io](https://img.shields.io/crates/v/donut.svg)](https://crates.io/crates/pitemp/)
+[![build status](https://circleci.com/gh/56quarters/strudel.svg?style=shield)](https://circleci.com/gh/56quarters/strudel)
+[![docs.rs](https://docs.rs/strudel/badge.svg)](https://docs.rs/strudel/)
+[![crates.io](https://img.shields.io/crates/v/strudel.svg)](https://crates.io/crates/strudel/)
 
 Export DHT22 temperature and humidity sensor readings as Prometheus metrics.
 
 ## Features
 
-`pitemp` reads temperature and humidity information from a [DHT22 sensor](https://learn.adafruit.com/dht)
+Strudel reads temperature and humidity information from a [DHT22 sensor](https://learn.adafruit.com/dht)
 and exports  the values as Prometheus metrics. It is best run on a Raspberry PI (3 or 4).
 
 The following metrics are exported:
 
-* `pitemp_temperature_celsius` - Degrees celsius measured by the sensor.
-* `pitemp_relative_humidity` - Relative humidity (from 0 to 100) measured by the sensor.
-* `pitemp_last_reading_timestamp` - UNIX timestamp of the last time the sensor was correctly read.
-* `pitemp_collections_total` - Total number of attempts to read the sensor.
-* `pitemp_errors_total` - Total errors by type while trying to read the sensor.
+* `strudel_temperature_celsius` - Degrees celsius measured by the sensor.
+* `strudel_relative_humidity` - Relative humidity (from 0 to 100) measured by the sensor.
+* `strudel_last_reading_timestamp` - UNIX timestamp of the last time the sensor was correctly read.
+* `strudel_collections_total` - Total number of attempts to read the sensor.
+* `strudel_errors_total` - Total errors by type while trying to read the sensor.
 
 ## Build
 
-`pitemp` is a Rust program and must be built from source using a Rust toolchain. Since it's meant
-to be run on a Raspberry PI, you will also likely need to cross-compile it. If you are on Ubuntu
-Linux, you'll need the following packages installed for this.
+`strudel` is a Rust program and must be built from source using a [Rust toolchain](https://rustup.rs/)
+. Since it's meant  to be run on a Raspberry PI, you will also likely need to cross-compile it. If you
+are on Ubuntu GNU/Linux, you'll need the following packages installed for this.
 
 ```
 apt-get install gcc-arm-linux-gnueabihf musl-tools
@@ -37,7 +37,7 @@ Next, make sure you have a Rust toolchain for ARMv7, assuming you are using the 
 rustup target add armv7-unknown-linux-musleabihf
 ```
 
-Next, you'll need to build `pitemp` itself for ARMv7.
+Next, you'll need to build `strudel` itself for ARMv7.
 
 ```
 cargo build --release --target armv7-unknown-linux-musleabihf
@@ -54,27 +54,27 @@ a list of available pins, see the [Raspberry PI documentation](https://www.raspb
 
 ### Run
 
-In order to read and write the device `/dev/gpiomem`, `pitemp` must run as `root`. You can run
-`pitemp` as a Systemd service using the [provided unit file](ext/pitemp.service). This unit file
-assumes that you have copied the resulting `pitemp` binary to `/usr/local/bin/pitemp`.
+In order to read and write the device `/dev/gpiomem`, `strudel` must run as `root`. You can run
+`strudel` as a Systemd service using the [provided unit file](ext/strudel.service). This unit file
+assumes that you have copied the resulting `strudel` binary to `/usr/local/bin/strudel`.
 
 ```
-sudo cp target/armv7-unknown-linux-musleabihf/release/pitemp /usr/local/bin/pitemp
-sudo cp ext/pitemp.service /etc/systemd/system/pitemp.service
+sudo cp target/armv7-unknown-linux-musleabihf/release/strudel /usr/local/bin/strudel
+sudo cp ext/strudel.service /etc/systemd/system/strudel.service
 sudo systemctl daemon-reload
-sudo systemctl enable pitemp.service
-sudo systemctl start pitemp.serivce
+sudo systemctl enable strudel.service
+sudo systemctl start strudel.serivce
 ```
 
 ### Prometheus
 
-Prometheus metrics are exposed on port `9781` at `/metrics`. Once `pitemp`
+Prometheus metrics are exposed on port `9781` at `/metrics`. Once `strudel`
 is running, configure scrapes of it by your Prometheus server. Add the host running
-`pitemp` as a target under the Prometheus `scrape_configs` section as described by
+`strudel` as a target under the Prometheus `scrape_configs` section as described by
 the example below.
 
-**NOTE**: The DHT22 sensor can only be read every two seconds, at most. Thus the most
-frequent Prometheus scrape interval that `pitemp` can support is `2s`. Something a bit
+**NOTE**: The DHT22 sensor can only be read every two seconds, at most. Thus, the most
+frequent Prometheus scrape interval that `strudel` can support is `2s`. Something a bit
 longer (like `10s` or `15s`) is recommended.
 
 ```yaml
@@ -87,14 +87,14 @@ global:
       monitor: 'my_prom'
 
 scrape_configs:
-  - job_name: pitemp
+  - job_name: strudel
     static_configs:
       - targets: ['example:9781']
 ```
 
 ## License
 
-Pitemp is available under the terms of the [GPL, version 3](LICENSE).
+Strudel is available under the terms of the [GPL, version 3](LICENSE).
 
 ### Contribution
 
