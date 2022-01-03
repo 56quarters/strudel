@@ -19,12 +19,13 @@
 use crate::sensor::TemperatureReader;
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::MetricFamily;
-use prometheus::{Counter, CounterVec, Encoder, Gauge, Opts, Registry, TextEncoder};
+use prometheus::{Counter, CounterVec, Encoder, Gauge, Histogram, HistogramOpts, Opts, Registry, TextEncoder};
 use std::error::Error;
 use std::fmt;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::task;
+use tokio::time::Instant;
 use tracing::{event, span, Instrument, Level};
 
 /// Prometheus Collector implementation that reads temperature and humidity from
@@ -37,6 +38,7 @@ pub struct TemperatureMetrics {
     last_reading: Gauge,
     collections: Counter,
     errors: CounterVec,
+    timing: Histogram,
 }
 
 impl TemperatureMetrics {
@@ -47,14 +49,20 @@ impl TemperatureMetrics {
         let humidity = Gauge::new("strudel_relative_humidity", "Relative humidity (0-100)")
             .expect("unable to declare humidity gauge");
 
-        let last_reading = Gauge::new("strudel_last_reading_timestamp", "Timestamp of last successful read")
-            .expect("unable to declare last reading timestamp gauge");
+        let last_reading = Gauge::new("strudel_last_read_timestamp", "Timestamp of last successful read")
+            .expect("unable to declare last read timestamp gauge");
 
         let collections = Counter::new("strudel_collections_total", "Number of attempted reads")
             .expect("unable to declare collections counter");
 
         let errors = CounterVec::new(Opts::new("strudel_errors_total", "Number of failed reads"), &["kind"])
             .expect("unable to declare errors counter");
+
+        let timing = Histogram::with_opts(HistogramOpts::new(
+            "strudel_read_timing_seconds",
+            "Time taken to read the sensor in seconds",
+        ))
+        .expect("unable to declare timing histogram");
 
         Self {
             reader: Mutex::new(reader),
@@ -63,6 +71,7 @@ impl TemperatureMetrics {
             last_reading,
             collections,
             errors,
+            timing,
         }
     }
 }
@@ -75,11 +84,14 @@ impl Collector for TemperatureMetrics {
         descs.extend(self.last_reading.desc());
         descs.extend(self.collections.desc());
         descs.extend(self.errors.desc());
+        descs.extend(self.timing.desc());
         descs
     }
 
     fn collect(&self) -> Vec<MetricFamily> {
         self.collections.inc();
+
+        let start = Instant::now();
         let mut mfs = Vec::new();
         let mut reader = self.reader.lock().unwrap();
 
@@ -87,6 +99,7 @@ impl Collector for TemperatureMetrics {
             Ok((temp, humidity)) => {
                 self.temperature.set(temp.into());
                 self.humidity.set(humidity.into());
+                self.timing.observe(start.elapsed().as_secs_f64());
 
                 let now = SystemTime::now();
                 match now.duration_since(UNIX_EPOCH) {
@@ -115,6 +128,7 @@ impl Collector for TemperatureMetrics {
         mfs.extend(self.last_reading.collect());
         mfs.extend(self.collections.collect());
         mfs.extend(self.errors.collect());
+        mfs.extend(self.timing.collect());
         mfs
     }
 }
