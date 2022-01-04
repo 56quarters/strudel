@@ -18,6 +18,7 @@ The following metrics are exported:
 * `strudel_last_reading_timestamp` - UNIX timestamp of the last time the sensor was correctly read.
 * `strudel_collections_total` - Total number of attempts to read the sensor.
 * `strudel_errors_total` - Total errors by type while trying to read the sensor.
+* `strudel_read_timing_seconds` - Time taken to read the sensor, in seconds.
 
 ## Build
 
