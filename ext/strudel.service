@@ -7,6 +7,7 @@ Type=simple
 ExecStart=/usr/local/bin/strudel --bcm-pin 17 --log-level debug
 
 # Restrict what the service can do since it only needs the network and /dev
+CapabilityBoundingSet=
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
@@ -14,6 +15,7 @@ ProtectHome=true
 ProtectControlGroups=yes
 ProtectKernelModules=yes
 ProtectKernelTunables=yes
+RestrictNamespaces=yes
 
 [Install]
 WantedBy=multi-user.target
