@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.4.0](https://github.com/56quarters/strudel/tree/0.3.0) - 2022-01-09
+## [v0.4.0](https://github.com/56quarters/strudel/tree/0.4.0) - 2022-01-10
 
 * Restrict what `strudel` can do when running as a Systemd service.
 
