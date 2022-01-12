@@ -16,14 +16,15 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-use clap::{crate_version, Parser};
+use clap::Parser;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use std::net::SocketAddr;
-use std::process;
 use std::sync::Arc;
 use std::time::Instant;
+use std::{io, process};
 use strudel::{http_route, MetricsExposition, RequestContext, TemperatureMetrics, TemperatureReader};
+use tokio::signal::unix::{self, SignalKind};
 use tracing::{event, span, Instrument, Level};
 
 // const PIN_NUM: u8 = 17;
@@ -42,7 +43,7 @@ const DEFAULT_BIND_ADDR: ([u8; 4], u16) = ([0, 0, 0, 0], 9781);
 /// numbering of these pins (and how the pin number is provided to strudel) is based
 /// on the Broadcom SOC channel.
 #[derive(Debug, Parser)]
-#[clap(name = "strudel", version = crate_version!())]
+#[clap(name = "strudel", version = clap::crate_version ! ())]
 struct PitempApplication {
     /// BCM GPIO pin number the DHT22 sensor data line is connected to
     #[clap(long)]
@@ -129,7 +130,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     server
         .serve(service)
         .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+            // Wait for either SIGTERM or SIGINT to shutdown
+            tokio::select! {
+                _ = sigterm() => {}
+                _ = sigint() => {}
+            }
         })
         .await?;
 
@@ -139,5 +144,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         runtime_secs = %startup.elapsed().as_secs(),
     );
 
+    Ok(())
+}
+
+/// Return after the first SIGTERM signal received by this process
+async fn sigterm() -> io::Result<()> {
+    unix::signal(SignalKind::terminate())?.recv().await;
+    Ok(())
+}
+
+/// Return after the first SIGINT signal received by this process
+async fn sigint() -> io::Result<()> {
+    unix::signal(SignalKind::interrupt())?.recv().await;
     Ok(())
 }
