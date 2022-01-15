@@ -1,6 +1,6 @@
 # Changelog
 
-## [v0.5.0](https://github.com/56quarters/strudel/tree/0.5.0) - Unreleased
+## [v0.5.0](https://github.com/56quarters/strudel/tree/0.5.0) - 2022-01-15
 
 * Gracefully shutdown on `SIGINT` or `SIGTERM`. [#4](https://github.com/56quarters/strudel/pull/4)
 * Rename the metric `strudel_temperature_celsius` to `strudel_temperature_degrees`
