@@ -86,8 +86,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Clone here since we're going to pass ownership of this to the MetricsExposition
     // instance created below. Cloning is relatively cheap since the state of the registry
     // is contained within an Arc.
-    let reg = prometheus::default_registry().clone();
-    reg.register(Box::new(TemperatureMetrics::new(reader)))
+    let registry = prometheus::default_registry().clone();
+    registry
+        .register(Box::new(TemperatureMetrics::new(reader)))
         .unwrap_or_else(|e| {
             event!(
                 Level::ERROR,
@@ -98,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             process::exit(1)
         });
 
-    let metrics = MetricsExposition::new(reg);
+    let metrics = MetricsExposition::new(registry);
     let context = Arc::new(RequestContext::new(metrics));
     let service = make_service_fn(move |_| {
         let context = context.clone();
