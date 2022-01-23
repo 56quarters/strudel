@@ -19,14 +19,12 @@
 use crate::sensor::TemperatureReader;
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::MetricFamily;
-use prometheus::{Counter, CounterVec, Encoder, Gauge, Histogram, HistogramOpts, Opts, Registry, TextEncoder};
-use std::error::Error;
-use std::fmt;
+use prometheus::{Counter, CounterVec, Gauge, Histogram, HistogramOpts, Opts, Registry};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::task;
 use tokio::time::Instant;
-use tracing::{event, span, Instrument, Level};
+use tracing::{span, Instrument, Level};
 
 /// Prometheus Collector implementation that reads temperature and humidity from
 /// a DHT22 sensor. Temperature in degrees celsius and relative humidity will be
@@ -100,21 +98,13 @@ impl Collector for TemperatureMetrics {
                 match now.duration_since(UNIX_EPOCH) {
                     Ok(d) => self.last_reading.set(d.as_secs_f64()),
                     Err(e) => {
-                        event!(
-                            Level::WARN,
-                            message = "unable to compute seconds since UNIX epoch",
-                            error = %e
-                        );
+                        tracing::warn!(message = "unable to compute seconds since UNIX epoch", error = %e);
                     }
                 }
             }
             Err(e) => {
                 self.errors.with_label_values(&[e.kind().as_label()]).inc();
-                event!(
-                    Level::ERROR,
-                    message = "unable to read sensor for metric collection",
-                    error = %e,
-                );
+                tracing::error!(message = "unable to read sensor for metric collection", error = %e);
             }
         };
 
@@ -128,54 +118,23 @@ impl Collector for TemperatureMetrics {
     }
 }
 
-/// Error exposing Prometheus metrics in the text exposition format.
-#[derive(Debug)]
-pub struct ExpositionError {
-    msg: &'static str,
-    cause: Box<dyn Error + Send + Sync + 'static>,
-}
-
-impl ExpositionError {
-    pub fn new<E>(msg: &'static str, cause: E) -> Self
-    where
-        E: Error + Send + Sync + 'static,
-    {
-        ExpositionError {
-            msg,
-            cause: Box::new(cause),
-        }
-    }
-}
-
-impl fmt::Display for ExpositionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.msg, self.cause)
-    }
-}
-
-impl Error for ExpositionError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        Some(self.cause.as_ref())
-    }
-}
-
-/// Wrapper that exposes metrics from a Prometheus registry in the text exposition format.
+/// Adapter to allow metrics to be gathered in an async context.
 ///
-/// This wrapper gathers all metrics from the registry in a separate thread, managed by the
-/// tokio runtime in order to avoid blocking the future it is called from.
+/// Our metric collector takes a non-trivial amount of time to read the DHT22
+/// sensor (100+ milliseconds) and so we can't call Registry::gather() from an
+/// async context. This adapter runs the gather method in a Tokio thread pool
+/// so that metrics can be collected from async request handlers.
 #[derive(Debug)]
-pub struct MetricsExposition {
+pub struct RegistryAdapter {
     registry: Registry,
 }
 
-impl MetricsExposition {
+impl RegistryAdapter {
     pub fn new(registry: Registry) -> Self {
         Self { registry }
     }
 
-    /// Collect all metrics from the registry and encode them in the Prometheus text exposition
-    /// format, returning an error if metrics couldn't be collected or encoded for some reason.
-    pub async fn encoded_text(&self) -> Result<Vec<u8>, ExpositionError> {
+    pub async fn gather(&self) -> Vec<MetricFamily> {
         let registry = self.registry.clone();
 
         // Registry::gather() calls the collect() method of each registered collector. Our
@@ -183,24 +142,15 @@ impl MetricsExposition {
         // in response to being scraped for metrics, it runs in the Hyper HTTP request path.
         // Run it in a thread pool below to avoid blocking the current future while the sensor
         // is being read (100+ milliseconds).
-        task::spawn_blocking(move || {
-            let metric_families = registry.gather();
-            let mut buffer = Vec::new();
-            let encoder = TextEncoder::new();
-
-            event!(
-                Level::DEBUG,
-                message = "encoding metric families to text exposition format",
-                num_metrics = metric_families.len(),
-            );
-
-            encoder
-                .encode(&metric_families, &mut buffer)
-                .map_err(|e| ExpositionError::new("unable to encode Prometheus metrics", e))
-                .map(|_| buffer)
-        })
-        .instrument(span!(Level::DEBUG, "strudel_gather"))
-        .await
-        .map_err(|e| ExpositionError::new("unable to gather Prometheus metrics", e))?
+        match task::spawn_blocking(move || registry.gather())
+            .instrument(span!(Level::DEBUG, "strudel_gather"))
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!(message = "error gathering prometheus metrics", error = %e);
+                Vec::new()
+            }
+        }
     }
 }

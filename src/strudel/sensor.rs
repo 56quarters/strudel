@@ -22,7 +22,6 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::thread;
 use std::time::Duration;
-use tracing::{event, Level};
 
 const DHT_MAX_COUNT: u32 = 32_000;
 const DHT_PULSES: usize = 41;
@@ -173,12 +172,7 @@ impl Pulses {
             }
         }
 
-        event!(
-            Level::TRACE,
-            message = "reading low/high pulse counts",
-            counts = ?counts,
-        );
-
+        tracing::trace!(message = "reading low/high pulse counts", counts = ?counts);
         Ok(Self { counts })
     }
 
@@ -250,12 +244,10 @@ impl Data {
 
         threshold /= count;
 
-        event!(
-            Level::DEBUG,
+        tracing::debug!(
             message = "computing threshold from low pulse average",
-            threshold = threshold,
+            threshold = threshold
         );
-
         threshold
     }
 
@@ -268,13 +260,11 @@ impl Data {
         let expected = data[4];
         let computed = ((data[0] as u16 + data[1] as u16 + data[2] as u16 + data[3] as u16) & 0xFF) as u8;
 
-        event!(
-            Level::DEBUG,
+        tracing::debug!(
             message = "computing checksum for sensor data",
             computed = computed,
-            expected = expected,
+            expected = expected
         );
-
         if computed != expected {
             Err(SensorError::CheckSum(expected, computed))
         } else {
@@ -293,8 +283,7 @@ impl Data {
         let humidity = Humidity(hint + (hdec / 10.0));
         let temperature = TemperatureCelsius(tint + (tdec / 10.0));
 
-        event!(
-            Level::DEBUG,
+        tracing::debug!(
             message = "parsed sensor data",
             humidity_int = hint,
             humidity_dec = hdec,
