@@ -107,10 +107,6 @@
 //! ```
 //!
 
-mod http;
-mod metrics;
-mod sensor;
-
-pub use crate::http::{http_route, RequestContext};
-pub use crate::metrics::{ExpositionError, MetricsExposition, TemperatureMetrics};
-pub use crate::sensor::{Humidity, SensorError, SensorErrorKind, TemperatureCelsius, TemperatureReader};
+pub mod http;
+pub mod metrics;
+pub mod sensor;

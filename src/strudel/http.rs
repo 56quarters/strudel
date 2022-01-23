@@ -16,67 +16,74 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-use crate::metrics::MetricsExposition;
-use hyper::header::CONTENT_TYPE;
-use hyper::{Body, Method, Request, Response, StatusCode};
-use prometheus::TEXT_FORMAT;
+use crate::metrics::RegistryAdapter;
+use prometheus::proto::MetricFamily;
+use prometheus::{Encoder, TextEncoder, TEXT_FORMAT};
 use std::sync::Arc;
-use tracing::{event, Level};
+use warp::http::header::CONTENT_TYPE;
+use warp::http::{HeaderValue, StatusCode};
+use warp::reply::Response;
+use warp::{Filter, Rejection, Reply};
 
 /// Global stated shared between all HTTP requests via Arc.
 pub struct RequestContext {
-    exposition: MetricsExposition,
+    adapter: RegistryAdapter,
 }
 
 impl RequestContext {
-    pub fn new(exposition: MetricsExposition) -> Self {
-        RequestContext { exposition }
+    pub fn new(adapter: RegistryAdapter) -> Self {
+        RequestContext { adapter }
     }
 }
 
-/// Handle incoming HTTP requests for Prometheus metrics
-///
-/// The attached temperature and humidity sensor will be read (in a separate thread pool) in
-/// response to incoming requests. If the sensor could not be read for any reason, an HTTP
-/// 500 response will be returned.
-pub async fn http_route(req: Request<Body>, context: Arc<RequestContext>) -> Result<Response<Body>, hyper::Error> {
-    let method = req.method().clone();
-    let path = req.uri().path().to_owned();
-
-    let res = match (&method, path.as_ref()) {
-        (&Method::GET, "/metrics") => match context.exposition.encoded_text().await {
-            Ok(buffer) => {
-                event!(
-                    Level::DEBUG,
-                    message = "encoded prometheus metrics to text format",
-                    num_bytes = buffer.len(),
-                );
-
-                Response::builder()
-                    .status(StatusCode::OK)
-                    .header(CONTENT_TYPE, TEXT_FORMAT)
-                    .body(Body::from(buffer))
-                    .unwrap()
+/// Create a warp Filter implementation that renders Prometheus metrics from
+/// a registry in the text exposition format at the path `/metrics` for `GET`
+/// requests. If an error is encountered, an HTTP 500 will be returned and the
+/// error will be logged.
+pub fn text_metrics(context: Arc<RequestContext>) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    warp::path("metrics")
+        .and(warp::filters::method::get())
+        .and_then(move || {
+            let context = context.clone();
+            async move {
+                let metrics = context.adapter.gather().await;
+                Ok::<GatheredMetrics, Rejection>(GatheredMetrics::new(metrics))
             }
-            Err(e) => {
-                event!(
-                    Level::ERROR,
-                    message = "error scraping metrics",
-                    error = %e,
-                );
-
-                http_status_no_body(StatusCode::INTERNAL_SERVER_ERROR)
-            }
-        },
-
-        (_, "/metrics") => http_status_no_body(StatusCode::METHOD_NOT_ALLOWED),
-
-        _ => http_status_no_body(StatusCode::NOT_FOUND),
-    };
-
-    Ok(res)
+        })
 }
 
-fn http_status_no_body(code: StatusCode) -> Response<Body> {
-    Response::builder().status(code).body(Body::empty()).unwrap()
+/// Prometheus metrics that can be rendered in text exposition format.
+#[derive(Debug)]
+pub struct GatheredMetrics {
+    metrics: Vec<MetricFamily>,
+}
+
+impl GatheredMetrics {
+    pub fn new(metrics: Vec<MetricFamily>) -> Self {
+        GatheredMetrics { metrics }
+    }
+}
+
+impl Reply for GatheredMetrics {
+    fn into_response(self) -> Response {
+        let mut buf = Vec::new();
+        let encoder = TextEncoder::new();
+
+        match encoder.encode(&self.metrics, &mut buf) {
+            Ok(_) => {
+                tracing::debug!(
+                    message = "encoded prometheus metrics to text format",
+                    num_metrics = self.metrics.len()
+                );
+                let mut res = Response::new(buf.into());
+                res.headers_mut()
+                    .insert(CONTENT_TYPE, HeaderValue::from_static(TEXT_FORMAT));
+                res
+            }
+            Err(e) => {
+                tracing::error!(message = "error encoding metrics to text format", error = %e);
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        }
+    }
 }
