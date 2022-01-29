@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.6.0](https://github.com/56quarters/strudel/tree/0.6.0) - Unreleased
+
+* Switch to the Warp framework for HTTP routing. [#6](https://github.com/56quarters/strudel/pull/6)
+
 ## [v0.5.0](https://github.com/56quarters/strudel/tree/0.5.0) - 2022-01-15
 
 * Gracefully shutdown on `SIGINT` or `SIGTERM`. [#4](https://github.com/56quarters/strudel/pull/4)
