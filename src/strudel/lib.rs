@@ -16,8 +16,6 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-//!
-//!
 //! Export DHT22 temperature and humidity sensor readings as Prometheus metrics.
 //!
 //! ## Features
@@ -27,9 +25,9 @@
 //!
 //! The following metrics are exported:
 //!
-//! * `strudel_temperature_celsius` - Degrees celsius measured by the sensor.
+//! * `strudel_temperature_degrees` - Degrees celsius measured by the sensor.
 //! * `strudel_relative_humidity` - Relative humidity (from 0 to 100) measured by the sensor.
-//! * `strudel_last_reading_timestamp` - UNIX timestamp of the last time the sensor was correctly read.
+//! * `strudel_last_read_timestamp` - UNIX timestamp of the last time the sensor was correctly read.
 //! * `strudel_collections_total` - Total number of attempts to read the sensor.
 //! * `strudel_errors_total` - Total errors by type while trying to read the sensor.
 //!

@@ -7,7 +7,7 @@ homepage = "https://github.com/56quarters/strudel"
 repository = "https://github.com/56quarters/strudel"
 readme = "README.md"
 license = "GPL-3.0+"
-keywords = ["dht22", "temperature", "hardware"]
+keywords = ["dht22", "temperature", "hardware", "prometheus"]
 edition = "2021"
 
 [dependencies]
