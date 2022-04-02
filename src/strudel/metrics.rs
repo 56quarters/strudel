@@ -42,15 +42,10 @@ pub struct TemperatureMetrics {
 impl TemperatureMetrics {
     pub fn new(reader: TemperatureReader) -> Self {
         let temperature = Gauge::new("strudel_temperature_degrees", "Temperature in celsius").unwrap();
-
         let humidity = Gauge::new("strudel_relative_humidity", "Relative humidity (0-100)").unwrap();
-
         let last_reading = Gauge::new("strudel_last_read_timestamp", "Timestamp of last successful read").unwrap();
-
         let collections = Counter::new("strudel_collections_total", "Number of attempted reads").unwrap();
-
         let errors = CounterVec::new(Opts::new("strudel_errors_total", "Number of failed reads"), &["kind"]).unwrap();
-
         let timing = Histogram::with_opts(HistogramOpts::new(
             "strudel_read_timing_seconds",
             "Time taken to read the sensor in seconds",

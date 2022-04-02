@@ -41,7 +41,7 @@ const DEFAULT_BIND_ADDR: ([u8; 4], u16) = ([0, 0, 0, 0], 9781);
 /// on the Broadcom SOC channel.
 #[derive(Debug, Parser)]
 #[clap(name = "strudel", version = clap::crate_version ! ())]
-struct PitempApplication {
+struct StrudelApplication {
     /// BCM GPIO pin number the DHT22 sensor data line is connected to
     #[clap(long)]
     bcm_pin: u8,
@@ -60,7 +60,7 @@ struct PitempApplication {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let opts = PitempApplication::parse();
+    let opts = StrudelApplication::parse();
     tracing::subscriber::set_global_default(
         tracing_subscriber::FmtSubscriber::builder()
             .with_max_level(opts.log_level)
