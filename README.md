@@ -1,6 +1,6 @@
 # Strudel
 
-[![build status](https://circleci.com/gh/56quarters/strudel.svg?style=shield)](https://circleci.com/gh/56quarters/strudel)
+![build status](https://github.com/56quarters/strudel/actions/workflows/rust.yml/badge.svg)
 [![docs.rs](https://docs.rs/strudel/badge.svg)](https://docs.rs/strudel/)
 [![crates.io](https://img.shields.io/crates/v/strudel.svg)](https://crates.io/crates/strudel/)
 
