@@ -28,7 +28,7 @@ const DHT_PULSES: usize = 41;
 const DATA_SIZE: usize = 5;
 
 /// Temperature, in degrees celsius
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(transparent)]
 pub struct TemperatureCelsius(f64);
 
@@ -45,7 +45,7 @@ impl fmt::Display for TemperatureCelsius {
 }
 
 /// Relative humidity (from 0 to 100)
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(transparent)]
 pub struct Humidity(f64);
 
@@ -274,21 +274,24 @@ impl Data {
 
     /// Parse data bytes into temperature celsius and relative humidity.
     fn read(&self) -> (TemperatureCelsius, Humidity) {
-        // TODO(56quarters) Explain this, link to datasheet
-        let hint = self.bytes[0] as f64;
-        let hdec = self.bytes[1] as f64;
-        let tint = self.bytes[2] as f64;
-        let tdec = self.bytes[3] as f64;
+        // See https://cdn-shop.adafruit.com/datasheets/Digital+humidity+and+temperature+sensor+AM2302.pdf
+        // first two bytes are humidity as a u16 * 10
+        let h = (self.bytes[0] as u16) * 256 /* shift left 8 bits */ + self.bytes[1] as u16;
+        // second two bytes are temperature as a u16 * 10 with the highest bit indicating sign
+        let t = ((self.bytes[2] & 0b0111_1111) as u16) * 256 /* shift left 8 bits */ + self.bytes[3] as u16;
 
-        let humidity = Humidity(hint + (hdec / 10.0));
-        let temperature = TemperatureCelsius(tint + (tdec / 10.0));
+        let hdec = h as f64 / 10.0;
+        let mut tdec = t as f64 / 10.0;
+        // highest bit of the temperature is `1` to indicate a negative value
+        if self.bytes[2] & 0b1000_0000 > 0 {
+            tdec = -tdec;
+        }
+
+        let humidity = Humidity(hdec);
+        let temperature = TemperatureCelsius(tdec);
 
         tracing::debug!(
             message = "parsed sensor data",
-            humidity_int = hint,
-            humidity_dec = hdec,
-            temperature_int = tint,
-            temperature_dec = tdec,
             temperature = %temperature,
             humidity = %humidity
         );
@@ -355,5 +358,44 @@ impl TemperatureReader {
         let pulses = Pulses::from_iopin(&self.pin)?;
         let parsed = Data::from_pulses(&pulses)?;
         Ok(parsed.read())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{Data, Humidity, TemperatureCelsius};
+
+    #[test]
+    fn test_data_read_positive_temp() {
+        // Example data, from the datasheet: https://cdn-shop.adafruit.com/datasheets/Digital+humidity+and+temperature+sensor+AM2302.pdf
+        let mut bytes = [0; 5];
+        bytes[0] = 0b0000_0010; // humidity 1
+        bytes[1] = 0b1000_1100; // humidity 2
+        bytes[2] = 0b0000_0001; // temperature 1
+        bytes[3] = 0b0101_1111; // temperature 2
+        bytes[4] = 0b0000_0000; // checksum, ignored here
+
+        let data = Data { bytes };
+        let (t, h) = data.read();
+
+        assert_eq!(TemperatureCelsius(35.1), t);
+        assert_eq!(Humidity(65.2), h);
+    }
+
+    #[test]
+    fn test_data_read_negative_temp() {
+        // Example data, from the datasheet: https://cdn-shop.adafruit.com/datasheets/Digital+humidity+and+temperature+sensor+AM2302.pdf
+        let mut bytes = [0; 5];
+        bytes[0] = 0b0000_0010; // humidity 1
+        bytes[1] = 0b1000_1100; // humidity 2
+        bytes[2] = 0b1000_0000; // temperature 1
+        bytes[3] = 0b0110_0101; // temperature 2
+        bytes[4] = 0b0000_0000; // checksum, ignored here
+
+        let data = Data { bytes };
+        let (t, h) = data.read();
+
+        assert_eq!(TemperatureCelsius(-10.1), t);
+        assert_eq!(Humidity(65.2), h);
     }
 }
