@@ -1,8 +1,10 @@
 # Changelog
 
-## [v0.6.0](https://github.com/56quarters/strudel/tree/0.6.0) - Unreleased
+## [v0.6.0](https://github.com/56quarters/strudel/tree/0.6.0) - 2022-05-24
 
 * Switch to the Warp framework for HTTP routing. [#6](https://github.com/56quarters/strudel/pull/6)
+* Fix parsing of sensor data to correctly read humidity. Thank you to `@tomasff` for
+  reporting and debugging this issue. [#9](https://github.com/56quarters/strudel/pull/9)
 
 ## [v0.5.0](https://github.com/56quarters/strudel/tree/0.5.0) - 2022-01-15
 
