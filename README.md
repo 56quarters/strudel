@@ -93,6 +93,14 @@ scrape_configs:
       - targets: ['example:9781']
 ```
 
+## References
+
+Some helpful documentation, articles, etc. used to create Strudel
+
+* [Datasheet](https://cdn-shop.adafruit.com/datasheets/Digital+humidity+and+temperature+sensor+AM2302.pdf)
+* [DHT11 Driver in Rust](https://www.speblog.org/blog/dht11-temperature-humidity-rust-driver-raspberry-pi/)
+* [RPPal crate](https://crates.io/crates/rppal)
+
 ## License
 
 Strudel is available under the terms of the [GPL, version 3](LICENSE).
