@@ -195,11 +195,11 @@ impl Pulses {
 
 /// Sensor data parsed from low/high cycle counts.
 #[derive(Debug)]
-struct Data {
+struct Reading {
     bytes: [u8; DATA_SIZE],
 }
 
-impl Data {
+impl Reading {
     /// Parse sensor data from the provided low/high pulse counts.
     ///
     /// An error will be returned if the checksum included in the data indicates the data
@@ -273,7 +273,7 @@ impl Data {
     }
 
     /// Parse data bytes into temperature celsius and relative humidity.
-    fn read(&self) -> (TemperatureCelsius, Humidity) {
+    fn parse(&self) -> (TemperatureCelsius, Humidity) {
         // See https://cdn-shop.adafruit.com/datasheets/Digital+humidity+and+temperature+sensor+AM2302.pdf
         // first two bytes are humidity as a u16 * 10
         let h = (self.bytes[0] as u16) * 256 /* shift left 8 bits */ + self.bytes[1] as u16;
@@ -292,6 +292,8 @@ impl Data {
 
         tracing::debug!(
             message = "parsed sensor data",
+            raw_temperature = t,
+            raw_humidity = h,
             temperature = %temperature,
             humidity = %humidity
         );
@@ -336,7 +338,11 @@ impl TemperatureReader {
 
     /// Send a high-low-high signal to indicate the sensor should perform a read
     fn prepare_for_read(&mut self) {
-        // TODO(56quarters): Explain this, link to datasheet
+        // https://cdn-shop.adafruit.com/datasheets/Digital+humidity+and+temperature+sensor+AM2302.pdf
+        // Host needs to set the sensor:
+        // * high to start the read process, waking the sensor up from low-power mode
+        // * low for at least 1ms to ensure the sensor detected the start of this process
+        // * high for 20-40us to then wait for the sensor's response
         self.pin.set_mode(Mode::Output);
         self.pin.set_high();
         thread::sleep(Duration::from_millis(50));
@@ -356,17 +362,127 @@ impl TemperatureReader {
     pub fn read(&mut self) -> Result<(TemperatureCelsius, Humidity), SensorError> {
         self.prepare_for_read();
         let pulses = Pulses::from_iopin(&self.pin)?;
-        let parsed = Data::from_pulses(&pulses)?;
-        Ok(parsed.read())
+        let reading = Reading::from_pulses(&pulses)?;
+        Ok(reading.parse())
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::{Data, Humidity, TemperatureCelsius};
+    use super::{Humidity, Pulses, Reading, SensorError, TemperatureCelsius, DATA_SIZE, DHT_PULSES};
+
+    fn new_counts() -> [u32; DHT_PULSES * 2] {
+        #[rustfmt::skip]
+        let counts = [
+            0, 761,
+            561, 307,
+            559, 295,
+            598, 307,
+            589, 307,
+            591, 307,
+            598, 307,
+            591, 866,
+            592, 854,
+            570, 748,
+            598, 860,
+            598, 859,
+            596, 307,
+            590, 307,
+            598, 859,
+            599, 859,
+            598, 847,
+            748, 300,
+            593, 296,
+            589, 307,
+            598, 300,
+            598, 307,
+            591, 307,
+            598, 307,
+            590, 847,
+            748, 307,
+            592, 306,
+            599, 299,
+            598, 307,
+            591, 307,
+            598, 307,
+            591, 307,
+            591, 855,
+            708, 867,
+            590, 866,
+            591, 867,
+            591, 307,
+            598, 859,
+            598, 859,
+            598, 300,
+            598, 295,
+        ];
+
+        counts
+    }
 
     #[test]
-    fn test_data_read_positive_temp() {
+    fn test_reading_from_pulses() {
+        let pulses = Pulses { counts: new_counts() };
+        let res = Reading::from_pulses(&pulses);
+
+        assert!(res.is_ok(), "unexpected error result: {:?}", res);
+
+        let reading = res.unwrap();
+        let (t, h) = reading.parse();
+
+        assert_eq!(TemperatureCelsius(25.7), t);
+        assert_eq!(Humidity(99.9), h);
+    }
+
+    #[test]
+    fn test_reading_threshold() {
+        let pulses = Pulses { counts: new_counts() };
+        let threshold = Reading::pulse_threshold(&pulses);
+
+        assert_eq!(602, threshold);
+    }
+
+    #[test]
+    fn test_reading_checksum_valid() {
+        let mut bytes = [0; DATA_SIZE];
+        bytes[0] = 0b0000_0010; // humidity 1
+        bytes[1] = 0b1000_1100; // humidity 2
+        bytes[2] = 0b0000_0001; // temperature 1
+        bytes[3] = 0b0101_1111; // temperature 2
+        bytes[4] = 0b1110_1110; // checksum
+
+        let res = Reading::checksum(&bytes);
+        assert!(res.is_ok())
+    }
+
+    #[test]
+    fn test_reading_checksum_invalid() {
+        let mut bytes = [0; 5];
+        bytes[0] = 0b0000_0010; // humidity 1
+        bytes[1] = 0b1000_1100; // humidity 2
+        bytes[2] = 0b0000_0001; // temperature 1
+        bytes[3] = 0b0101_1111; // temperature 2
+        bytes[4] = 0b0000_0000; // checksum
+
+        let res = Reading::checksum(&bytes);
+        assert!(res.is_err());
+
+        match res.unwrap_err() {
+            SensorError::CheckSum(expected, got) => {
+                assert_eq!(0b0000_0000, expected); // `expected` is what is part of the data
+                assert_eq!(0b1110_1110, got); // `got` is what was computed based on the data
+            }
+            SensorError::KindMsg(kind, msg) => {
+                panic!("Unexpected error. kind: {:?}, message: {}", kind, msg);
+            }
+            SensorError::KindMsgCause(kind, msg, cause) => {
+                panic!("Unexpected error. kind: {:?}, message: {}, cause: {}", kind, msg, cause);
+            }
+        }
+    }
+
+    #[test]
+    fn test_reading_parse_positive_temp() {
         // Example data, from the datasheet: https://cdn-shop.adafruit.com/datasheets/Digital+humidity+and+temperature+sensor+AM2302.pdf
         let mut bytes = [0; 5];
         bytes[0] = 0b0000_0010; // humidity 1
@@ -375,15 +491,15 @@ mod test {
         bytes[3] = 0b0101_1111; // temperature 2
         bytes[4] = 0b0000_0000; // checksum, ignored here
 
-        let data = Data { bytes };
-        let (t, h) = data.read();
+        let reading = Reading { bytes };
+        let (t, h) = reading.parse();
 
         assert_eq!(TemperatureCelsius(35.1), t);
         assert_eq!(Humidity(65.2), h);
     }
 
     #[test]
-    fn test_data_read_negative_temp() {
+    fn test_reading_parse_negative_temp() {
         // Example data, from the datasheet: https://cdn-shop.adafruit.com/datasheets/Digital+humidity+and+temperature+sensor+AM2302.pdf
         let mut bytes = [0; 5];
         bytes[0] = 0b0000_0010; // humidity 1
@@ -392,8 +508,8 @@ mod test {
         bytes[3] = 0b0110_0101; // temperature 2
         bytes[4] = 0b0000_0000; // checksum, ignored here
 
-        let data = Data { bytes };
-        let (t, h) = data.read();
+        let reading = Reading { bytes };
+        let (t, h) = reading.parse();
 
         assert_eq!(TemperatureCelsius(-10.1), t);
         assert_eq!(Humidity(65.2), h);
