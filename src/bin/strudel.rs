@@ -17,15 +17,19 @@
 //
 
 use clap::Parser;
+use prometheus_client::registry::Registry;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{io, process};
 use strudel::http::RequestContext;
-use strudel::metrics::{RegistryAdapter, TemperatureMetrics};
+use strudel::metrics::TemperatureMetrics;
 use strudel::sensor::TemperatureReader;
 use tokio::signal::unix::{self, SignalKind};
+use tokio::task;
 use tracing::Level;
 
+const DEFAULT_REFERSH_SECS: u64 = 10;
 const DEFAULT_LOG_LEVEL: Level = Level::INFO;
 const DEFAULT_BIND_ADDR: ([u8; 4], u16) = ([0, 0, 0, 0], 9781);
 
@@ -45,6 +49,10 @@ struct StrudelApplication {
     /// BCM GPIO pin number the DHT22 sensor data line is connected to
     #[clap(long)]
     bcm_pin: u8,
+
+    /// Read the sensor at this interval, in seconds
+    #[clap(long, default_value_t = DEFAULT_REFERSH_SECS)]
+    refresh_secs: u64,
 
     /// Logging verbosity. Allowed values are 'trace', 'debug', 'info', 'warn', and 'error'
     /// (case insensitive)
@@ -73,16 +81,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         process::exit(1)
     });
 
-    let registry = prometheus::default_registry().clone();
-    registry
-        .register(Box::new(TemperatureMetrics::new(reader)))
-        .unwrap_or_else(|e| {
-            tracing::error!(message = "failed to register sensor metric collector", error = %e);
-            process::exit(1)
-        });
+    let mut reg = <Registry>::default();
+    let metrics = TemperatureMetrics::new(&mut reg, reader);
 
-    let metrics = RegistryAdapter::new(registry);
-    let context = Arc::new(RequestContext::new(metrics));
+    // Periodically read from the sensor and update metrics based on the readings.
+    task::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(opts.refresh_secs));
+
+        loop {
+            let _ = interval.tick().await;
+            metrics.collect().await;
+        }
+    });
+
+    let context = Arc::new(RequestContext::new(reg));
     let handler = strudel::http::text_metrics(context);
     let (sock, server) = warp::serve(handler)
         .try_bind_with_graceful_shutdown(opts.bind, async {
