@@ -17,43 +17,79 @@
 //
 
 use crate::sensor::TemperatureReader;
-use prometheus::core::{Collector, Desc};
-use prometheus::proto::MetricFamily;
-use prometheus::{Counter, CounterVec, Gauge, Histogram, HistogramOpts, Opts, Registry};
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use prometheus_client::encoding::text::Encode;
+use prometheus_client::metrics::counter::Counter;
+use prometheus_client::metrics::family::Family;
+use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::metrics::histogram::Histogram;
+use prometheus_client::registry::Registry;
+use std::sync::{Arc, Mutex};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::task;
-use tokio::time::Instant;
-use tracing::{span, Instrument, Level};
+use tracing;
+
+const BUCKETS: &[f64] = &[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0];
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Encode)]
+struct ErrorsLabels {
+    kind: String,
+}
 
 /// Prometheus Collector implementation that reads temperature and humidity from
 /// a DHT22 sensor. Temperature in degrees celsius and relative humidity will be
 /// emitted as gauges.
 pub struct TemperatureMetrics {
-    reader: Mutex<TemperatureReader>,
-    temperature: Gauge,
-    humidity: Gauge,
-    last_reading: Gauge,
+    reader: Arc<Mutex<TemperatureReader>>,
+    temperature: Gauge<f64>,
+    humidity: Gauge<f64>,
+    last_reading: Gauge<f64>,
     collections: Counter,
-    errors: CounterVec,
+    errors: Family<ErrorsLabels, Counter>,
     timing: Histogram,
 }
 
 impl TemperatureMetrics {
-    pub fn new(reader: TemperatureReader) -> Self {
-        let temperature = Gauge::new("strudel_temperature_degrees", "Temperature in celsius").unwrap();
-        let humidity = Gauge::new("strudel_relative_humidity", "Relative humidity (0-100)").unwrap();
-        let last_reading = Gauge::new("strudel_last_read_timestamp", "Timestamp of last successful read").unwrap();
-        let collections = Counter::new("strudel_collections_total", "Number of attempted reads").unwrap();
-        let errors = CounterVec::new(Opts::new("strudel_errors_total", "Number of failed reads"), &["kind"]).unwrap();
-        let timing = Histogram::with_opts(HistogramOpts::new(
+    pub fn new(reg: &mut Registry, reader: TemperatureReader) -> Self {
+        let temperature = Gauge::<f64>::default();
+        let humidity = Gauge::<f64>::default();
+        let last_reading = Gauge::<f64>::default();
+        let collections = Counter::default();
+        let errors = Family::<ErrorsLabels, Counter>::default();
+        let timing = Histogram::new(BUCKETS.iter().copied());
+
+        reg.register(
+            "strudel_temperature_degrees",
+            "Temperature in celsius",
+            Box::new(temperature.clone()),
+        );
+        reg.register(
+            "strudel_relative_humidity",
+            "Relative humidity (0-100)",
+            Box::new(humidity.clone()),
+        );
+        reg.register(
+            "strudel_last_read_timestamp",
+            "Timestamp of last successful read",
+            Box::new(last_reading.clone()),
+        );
+        reg.register(
+            "strudel_collections_total",
+            "Number of attempted reads",
+            Box::new(collections.clone()),
+        );
+        reg.register(
+            "strudel_errors_total",
+            "Number of failed reads",
+            Box::new(errors.clone()),
+        );
+        reg.register(
             "strudel_read_timing_seconds",
             "Time taken to read the sensor in seconds",
-        ))
-        .unwrap();
+            Box::new(timing.clone()),
+        );
 
         Self {
-            reader: Mutex::new(reader),
+            reader: Arc::new(Mutex::new(reader)),
             temperature,
             humidity,
             last_reading,
@@ -62,90 +98,43 @@ impl TemperatureMetrics {
             timing,
         }
     }
-}
 
-impl Collector for TemperatureMetrics {
-    fn desc(&self) -> Vec<&Desc> {
-        let mut descs = Vec::new();
-        descs.extend(self.temperature.desc());
-        descs.extend(self.humidity.desc());
-        descs.extend(self.last_reading.desc());
-        descs.extend(self.collections.desc());
-        descs.extend(self.errors.desc());
-        descs.extend(self.timing.desc());
-        descs
-    }
+    pub async fn collect(&self) {
+        let start = Instant::now();
+        let reader = self.reader.clone();
 
-    fn collect(&self) -> Vec<MetricFamily> {
+        // The sensor reader blocks while reading the sensor via a GPIO pin. Since this code
+        // is called in response to being scraped for metrics, it runs in the Hyper HTTP request
+        // path. Run it in a thread pool below to avoid blocking the current future while the sensor
+        // is being read (100+ milliseconds).
+        let res = task::spawn_blocking(move || {
+            let mut r = reader.lock().unwrap();
+            r.read()
+        })
+        .await
+        .unwrap();
+
         self.collections.inc();
 
-        let start = Instant::now();
-        let mut mfs = Vec::new();
-        let mut reader = self.reader.lock().unwrap();
-
-        match reader.read() {
+        match res {
             Ok((temp, humidity)) => {
                 self.temperature.set(temp.into());
                 self.humidity.set(humidity.into());
                 self.timing.observe(start.elapsed().as_secs_f64());
 
-                let now = SystemTime::now();
-                match now.duration_since(UNIX_EPOCH) {
-                    Ok(d) => self.last_reading.set(d.as_secs_f64()),
-                    Err(e) => {
-                        tracing::warn!(message = "unable to compute seconds since UNIX epoch", error = %e);
-                    }
-                }
+                // If we can't get the number of seconds since the epoch, skip the update
+                let _ = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| self.last_reading.set(d.as_secs_f64()));
             }
             Err(e) => {
-                self.errors.with_label_values(&[e.kind().as_label()]).inc();
+                let labels = ErrorsLabels {
+                    kind: e.kind().as_label().to_owned(),
+                };
+
+                self.errors.get_or_create(&labels).inc();
                 tracing::error!(message = "unable to read sensor for metric collection", error = %e);
             }
         };
-
-        mfs.extend(self.temperature.collect());
-        mfs.extend(self.humidity.collect());
-        mfs.extend(self.last_reading.collect());
-        mfs.extend(self.collections.collect());
-        mfs.extend(self.errors.collect());
-        mfs.extend(self.timing.collect());
-        mfs
-    }
-}
-
-/// Adapter to allow metrics to be gathered in an async context.
-///
-/// Our metric collector takes a non-trivial amount of time to read the DHT22
-/// sensor (100+ milliseconds) and so we can't call Registry::gather() from an
-/// async context. This adapter runs the gather method in a Tokio thread pool
-/// so that metrics can be collected from async request handlers.
-#[derive(Debug)]
-pub struct RegistryAdapter {
-    registry: Registry,
-}
-
-impl RegistryAdapter {
-    pub fn new(registry: Registry) -> Self {
-        Self { registry }
-    }
-
-    pub async fn gather(&self) -> Vec<MetricFamily> {
-        let registry = self.registry.clone();
-
-        // Registry::gather() calls the collect() method of each registered collector. Our
-        // collector blocks while reading the sensor via a GPIO pin. Since this code is called
-        // in response to being scraped for metrics, it runs in the Hyper HTTP request path.
-        // Run it in a thread pool below to avoid blocking the current future while the sensor
-        // is being read (100+ milliseconds).
-        match task::spawn_blocking(move || registry.gather())
-            .instrument(span!(Level::DEBUG, "strudel_gather"))
-            .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::error!(message = "error gathering prometheus metrics", error = %e);
-                Vec::new()
-            }
-        }
     }
 }
