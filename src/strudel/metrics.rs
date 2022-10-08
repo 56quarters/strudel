@@ -73,15 +73,11 @@ impl TemperatureMetrics {
             Box::new(last_reading.clone()),
         );
         reg.register(
-            "strudel_collections_total",
+            "strudel_collections",
             "Number of attempted reads",
             Box::new(collections.clone()),
         );
-        reg.register(
-            "strudel_errors_total",
-            "Number of failed reads",
-            Box::new(errors.clone()),
-        );
+        reg.register("strudel_errors", "Number of failed reads", Box::new(errors.clone()));
         reg.register(
             "strudel_read_timing_seconds",
             "Time taken to read the sensor in seconds",
