@@ -11,8 +11,8 @@ keywords = ["dht22", "temperature", "hardware", "prometheus"]
 edition = "2021"
 
 [dependencies]
-clap = { version = "3.0.4", features = ["cargo", "derive", "std"], default-features = false }
-prometheus-client = "0.16.0"
+clap = { version = "3.2.22", features = ["cargo", "derive", "std"], default-features = false }
+prometheus-client = "0.18.0"
 rppal = "0.13.1"
 tokio = { version = "1.14.0", features = ["full"] }
 tracing = "0.1.29"
