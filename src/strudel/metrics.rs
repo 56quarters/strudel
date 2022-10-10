@@ -100,9 +100,8 @@ impl TemperatureMetrics {
         let reader = self.reader.clone();
 
         // The sensor reader blocks while reading the sensor via a GPIO pin. Since this code
-        // is called in response to being scraped for metrics, it runs in the Hyper HTTP request
-        // path. Run it in a thread pool below to avoid blocking the current future while the sensor
-        // is being read (100+ milliseconds).
+        // is called from an async context, run it in a thread pool below to avoid blocking
+        // the current future while the sensor is being read (100+ milliseconds).
         let res = task::spawn_blocking(move || {
             let mut r = reader.lock().unwrap();
             r.read()

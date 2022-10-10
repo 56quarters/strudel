@@ -74,16 +74,17 @@ is running, configure scrapes of it by your Prometheus server. Add the host runn
 `strudel` as a target under the Prometheus `scrape_configs` section as described by
 the example below.
 
-**NOTE**: The DHT22 sensor can only be read every two seconds, at most. Thus, the most
-frequent Prometheus scrape interval that `strudel` can support is `2s`. Something a bit
-longer (like `10s` or `15s`) is recommended.
+**NOTE**: The DHT22 sensor can only be read every two seconds, at most. By default, the
+sensor is read every `30s`, in the background (*not* in response to Prometheus scrapes).
+Thus, scrapes by Prometheus more frequent than `30s` don't have any benefit unless the
+refresh interval for `strudel` is adjusted as well.
 
 ```yaml
 # Sample config for Prometheus.
 
 global:
-  scrape_interval:     15s
-  evaluation_interval: 15s
+  scrape_interval:     1m
+  evaluation_interval: 1m
   external_labels:
       monitor: 'my_prom'
 
