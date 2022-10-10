@@ -29,7 +29,7 @@ use tokio::signal::unix::{self, SignalKind};
 use tokio::task;
 use tracing::Level;
 
-const DEFAULT_REFERSH_SECS: u64 = 10;
+const DEFAULT_REFRESH_SECS: u64 = 30;
 const DEFAULT_LOG_LEVEL: Level = Level::INFO;
 const DEFAULT_BIND_ADDR: ([u8; 4], u16) = ([0, 0, 0, 0], 9781);
 
@@ -51,7 +51,7 @@ struct StrudelApplication {
     bcm_pin: u8,
 
     /// Read the sensor at this interval, in seconds
-    #[clap(long, default_value_t = DEFAULT_REFERSH_SECS)]
+    #[clap(long, default_value_t = DEFAULT_REFRESH_SECS)]
     refresh_secs: u64,
 
     /// Logging verbosity. Allowed values are 'trace', 'debug', 'info', 'warn', and 'error'
