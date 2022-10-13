@@ -19,15 +19,15 @@
 use clap::Parser;
 use prometheus_client::registry::Registry;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{io, process};
 use strudel::http::RequestContext;
 use strudel::metrics::TemperatureMetrics;
-use strudel::sensor::TemperatureReader;
+use strudel::sensor::{open_pin, DHT22Sensor};
 use tokio::signal::unix::{self, SignalKind};
 use tokio::task;
-use tracing::Level;
+use tracing::{Instrument, Level};
 
 const DEFAULT_REFRESH_SECS: u64 = 30;
 const DEFAULT_LOG_LEVEL: Level = Level::INFO;
@@ -76,13 +76,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     )
     .expect("failed to set tracing subscriber");
 
-    let reader = TemperatureReader::new(opts.bcm_pin).unwrap_or_else(|e| {
-        tracing::error!(message = "failed to initialize sensor reader", bcm_pin = opts.bcm_pin, error = %e);
+    let pin = open_pin(opts.bcm_pin).unwrap_or_else(|e| {
+        tracing::error!(message = "failed to initialize data pin", bcm_pin = opts.bcm_pin, error = %e);
         process::exit(1)
     });
 
     let mut reg = <Registry>::default();
-    let metrics = TemperatureMetrics::new(&mut reg, reader);
+    let metrics = TemperatureMetrics::new(&mut reg);
+    let sensor = Arc::new(Mutex::new(DHT22Sensor::from_pin(pin)));
 
     // Periodically read from the sensor and update metrics based on the readings.
     task::spawn(async move {
@@ -90,7 +91,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         loop {
             let _ = interval.tick().await;
-            metrics.collect().await;
+            let sensor_ref = sensor.clone();
+
+            let res = task::spawn_blocking(move || {
+                let mut s = sensor_ref.lock().unwrap();
+                s.read()
+            })
+            .instrument(tracing::span!(Level::DEBUG, "sensor_read"))
+            .await
+            .unwrap();
+
+            metrics.update(res);
         }
     });
 
