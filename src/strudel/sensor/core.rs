@@ -16,10 +16,9 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+use rppal::gpio::{Gpio, IoPin, Mode};
 use std::error::Error;
 use std::fmt::{self, Formatter};
-
-use rppal::gpio::{Gpio, IoPin, Mode};
 
 /// Temperature, in degrees celsius
 #[derive(Copy, Clone, Debug, PartialEq)]
