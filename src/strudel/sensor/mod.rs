@@ -1,6 +1,6 @@
 // Strudel - Temperature and humidity metrics exporter for Prometheus
 //
-// Copyright 2021 Nick Pillitteri
+// Copyright 2022 Nick Pillitteri
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
