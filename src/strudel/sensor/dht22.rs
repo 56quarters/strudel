@@ -55,13 +55,13 @@ impl Pulses {
         // by two entries each iteration of the loop but use (i + 1) to access the odd entries.
         //
         // We only store up to DHT_MAX_COUNT which is a much much higher number of cycles than
-        // we expect to get in practice (normal number of cycles at high or low is 50 - 200).
+        // we expect to get in practice (normal number of cycles at high or low is < 1000).
         // This is done to enforce a timeout while waiting for the pin to switch between low
         // and high states. In this case, the read will have to be retried.
         for i in (0..counts.len()).step_by(2) {
             while pin.is_low() {
                 counts[i] += 1;
-                if counts[i] >= DHT_MAX_COUNT as u32 {
+                if counts[i] >= DHT_MAX_COUNT {
                     return Err(SensorError::KindMsg(
                         SensorErrorKind::ReadTimeout,
                         "timeout waiting for low pulse capture",
@@ -71,7 +71,7 @@ impl Pulses {
 
             while pin.is_high() {
                 counts[i + 1] += 1;
-                if counts[i + 1] >= DHT_MAX_COUNT as u32 {
+                if counts[i + 1] >= DHT_MAX_COUNT {
                     return Err(SensorError::KindMsg(
                         SensorErrorKind::ReadTimeout,
                         "timeout waiting for high pulse capture",
