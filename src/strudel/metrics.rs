@@ -17,15 +17,16 @@
 //
 
 use crate::sensor::{Humidity, SensorError, TemperatureCelsius};
-use prometheus_client::encoding::text::Encode;
+use prometheus_client::encoding::EncodeLabelSet;
 use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
+use std::sync::atomic::AtomicU64;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing;
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Encode)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct ErrorsLabels {
     kind: String,
 }
@@ -34,46 +35,38 @@ struct ErrorsLabels {
 /// humidity readings. Temperature in degrees celsius and relative humidity will be
 /// emitted as gauges.
 pub struct TemperatureMetrics {
-    temperature: Gauge<f64>,
-    humidity: Gauge<f64>,
-    last_reading: Gauge<f64>,
+    temperature: Gauge<f64, AtomicU64>,
+    humidity: Gauge<f64, AtomicU64>,
+    last_reading: Gauge<f64, AtomicU64>,
     collections: Counter,
     errors: Family<ErrorsLabels, Counter>,
 }
 
 impl TemperatureMetrics {
     pub fn new(reg: &mut Registry) -> Self {
-        let temperature = Gauge::<f64>::default();
-        let humidity = Gauge::<f64>::default();
-        let last_reading = Gauge::<f64>::default();
+        let temperature = Gauge::<f64, AtomicU64>::default();
+        let humidity = Gauge::<f64, AtomicU64>::default();
+        let last_reading = Gauge::<f64, AtomicU64>::default();
         let collections = Counter::default();
         let errors = Family::<ErrorsLabels, Counter>::default();
 
         reg.register(
             "strudel_temperature_degrees",
             "Temperature in celsius",
-            Box::new(temperature.clone()),
+            temperature.clone(),
         );
         reg.register(
             "strudel_relative_humidity",
             "Relative humidity (0-100)",
-            Box::new(humidity.clone()),
+            humidity.clone(),
         );
         reg.register(
             "strudel_last_read_timestamp",
             "Timestamp of last successful read",
-            Box::new(last_reading.clone()),
+            last_reading.clone(),
         );
-        reg.register(
-            "strudel_collections",
-            "Number of attempted reads",
-            Box::new(collections.clone()),
-        );
-        reg.register(
-            "strudel_errors",
-            "Number of failed reads by type",
-            Box::new(errors.clone()),
-        );
+        reg.register("strudel_collections", "Number of attempted reads", collections.clone());
+        reg.register("strudel_errors", "Number of failed reads by type", errors.clone());
 
         Self {
             temperature,

@@ -16,17 +16,20 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+use axum::routing::get;
+use axum::Router;
 use clap::Parser;
 use prometheus_client::registry::Registry;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{io, process};
-use strudel::http::RequestContext;
+use strudel::http::RequestState;
 use strudel::metrics::TemperatureMetrics;
 use strudel::sensor::{open_pin, DHT22Sensor};
 use tokio::signal::unix::{self, SignalKind};
 use tokio::task;
+use tower_http::trace::TraceLayer;
 use tracing::{Instrument, Level};
 
 const DEFAULT_REFRESH_SECS: u64 = 30;
@@ -47,22 +50,22 @@ const DEFAULT_BIND_ADDR: ([u8; 4], u16) = ([0, 0, 0, 0], 9781);
 #[clap(name = "strudel", version = clap::crate_version ! ())]
 struct StrudelApplication {
     /// BCM GPIO pin number the DHT22 sensor data line is connected to
-    #[clap(long)]
+    #[arg(long)]
     bcm_pin: u8,
 
     /// Read the sensor at this interval, in seconds
-    #[clap(long, default_value_t = DEFAULT_REFRESH_SECS)]
+    #[arg(long, default_value_t = DEFAULT_REFRESH_SECS)]
     refresh_secs: u64,
 
     /// Logging verbosity. Allowed values are 'trace', 'debug', 'info', 'warn', and 'error'
     /// (case insensitive)
-    #[clap(long, default_value_t = DEFAULT_LOG_LEVEL)]
+    #[arg(long, default_value_t = DEFAULT_LOG_LEVEL)]
     log_level: Level,
 
     /// Address to bind to. By default, strudel will bind to public address since
     /// the purpose is to expose metrics to an external system (Prometheus or another
     /// agent for ingestion)
-    #[clap(long, default_value_t = DEFAULT_BIND_ADDR.into())]
+    #[arg(long, default_value_t = DEFAULT_BIND_ADDR.into())]
     bind: SocketAddr,
 }
 
@@ -81,8 +84,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         process::exit(1)
     });
 
-    let mut reg = <Registry>::default();
-    let metrics = TemperatureMetrics::new(&mut reg);
+    let mut registry = <Registry>::default();
+    let metrics = TemperatureMetrics::new(&mut registry);
     let sensor = Arc::new(Mutex::new(DHT22Sensor::from_pin(pin)));
 
     // Periodically read from the sensor and update metrics based on the readings.
@@ -99,29 +102,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             })
             .instrument(tracing::span!(Level::DEBUG, "sensor_read"))
             .await
-            .unwrap();
+            .unwrap(); // TODO: Handle this error?!
 
             metrics.update(res);
         }
     });
 
-    let context = Arc::new(RequestContext::new(reg));
-    let handler = strudel::http::text_metrics(context);
-    let (sock, server) = warp::serve(handler)
-        .try_bind_with_graceful_shutdown(opts.bind, async {
-            // Wait for either SIGTERM or SIGINT to shutdown
-            tokio::select! {
-                _ = sigterm() => {}
-                _ = sigint() => {}
-            }
+    let state = Arc::new(RequestState { registry });
+    let app = Router::new()
+        .route("/metrics", get(strudel::http::text_metrics_handler))
+        .layer(TraceLayer::new_for_http())
+        .with_state(state.clone());
+
+    let server = axum::Server::try_bind(&opts.bind)
+        .map(|s| {
+            s.serve(app.into_make_service()).with_graceful_shutdown(async {
+                // Wait for either SIGTERM or SIGINT to shutdown
+                tokio::select! {
+                    _ = sigterm() => {}
+                    _ = sigint() => {}
+                }
+            })
         })
         .unwrap_or_else(|e| {
-            tracing::error!(message = "error binding to address", address = %opts.bind, error = %e);
+            tracing::error!(message = "error starting server", address = %opts.bind, err = %e);
             process::exit(1)
         });
 
-    tracing::info!(message = "server started", address = %sock);
-    server.await;
+    tracing::info!(message = "starting server", address = %opts.bind);
+    server.await.unwrap();
 
     tracing::info!("server shutdown");
     Ok(())
@@ -135,6 +144,5 @@ async fn sigterm() -> io::Result<()> {
 
 /// Return after the first SIGINT signal received by this process
 async fn sigint() -> io::Result<()> {
-    unix::signal(SignalKind::interrupt())?.recv().await;
-    Ok(())
+    tokio::signal::ctrl_c().await
 }
